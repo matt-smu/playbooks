@@ -107,9 +107,9 @@ def getCVSSscore( cveid):
          
     
     try:
-        con = MySQLdb.connect('localhost', 'nvd_mysql', 'nvd_mysql', 'nvd_mysql')
+        con = MySQLdb.connect('localhost', 'nvd', 'nvd', 'nvd')
         cur = con.cursor(MySQLdb.cursors.DictCursor)            
-        cur.execute("select score from nvd where cve_id = '%s'" % (cveid))
+        cur.execute("select score from nvd where id = '%s'" % (cveid))
         res=cur.fetchone() # the cveid or None it 
         if res:            
             score = res['score']  
@@ -148,7 +148,7 @@ def getnodevulns( andNode ):
     score = 'null' # the score to return
     scoreDict = {} # lookup the advance score by rule text
     scoreDict['direct network access'] = 10
-    scoreDict['NFS shell'] = 9.5                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+    scoreDict['NFS shell'] = 9.5
     #scoreDict['multi-hop access'] = 9
     scoreDict['execCode implies file access'] = 7.8
     scoreDict['NFS semantics'] = 9.6
