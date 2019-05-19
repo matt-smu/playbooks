@@ -8,12 +8,6 @@
   vars_files:
     - vars/main.yml
 
-      #  pre_tasks:
-      #- name: Install python 
-      #raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
-      #changed_when: False
-      #become: yes
-      #- setup:
   roles:
     - role: ansible-role-mysql
       become: True
@@ -24,3 +18,6 @@
   tasks:
     # experiment stuff
     - include_tasks: setup.yml
+      tags: [models,run,db]
+    - include_tasks: run.yml 
+      tags: run   

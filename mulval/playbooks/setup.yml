@@ -1,65 +1,53 @@
-# runs some mulvals
-# copies output back 
-
-
-#- name: mkdir -p dirs before copying
-#  file: 
-#    path: "/tmp/models/{{ item|basename }}/"
-#    state: directory
-#    mode: 0755
-#  with_fileglob:
-#     - "models/*"
-
-
-#- name: copy models to run
-#  copy: 
-#    src: "{{ item }}" 
-#    dest: "/tmp/models//{{ item|basename }}/"
-#  with_fileglob:
-#     - "models/*"
-
+# setup some mulvals
+# copies models to remote, installs packages, prepares to run 
 
 - name: remove old models dir
   file:
-          path: /tmp/models
+          path: "{{mulval_models_dir}}"
           state: absent
+  tags: [models,run]
 
-- name: copy models to remote
-  copy:
-          src: models
-          dest: /tmp/
+- name: mkdir -p dirs before copying
+  file: 
+    path: "{{mulval_models_dir}}/{{(item|basename|splitext)[0]}}/{{(item|basename|splitext)[0]}}_out"
+    state: directory
+    mode: 0755
+  with_fileglob:
+     - "{{mulval_models_src_dir}}/*"
+  tags: [models,run]
 
 - name: get list of file paths
+  delegate_to: localhost
   find: 
-    paths: /tmp/models
+    paths: "files/{{mulval_models_src_dir}}"
     patterns: '*.p,*.P'
     recurse: yes
     file_type: file
   register: find_results
+  tags: [models,run]
 
 - name: what we found
   debug: 
-    msg: "{{ find_results }}"
+    msg: "{{item.path | relpath('files')}}"
+  with_items: "{{find_results.files}}"
+  tags: models
 
-- name: chdir paths
-  debug:
-    msg: " {{ item.path|dirname }} "
-  with_items: " {{ find_results.files }} "
-
-- name:  run mulval 
-  shell: bash -lc "graph_gen.sh {{ item.path|basename }} -p -v"
-  args:
-          chdir: "{{item.path|dirname}}"
-  with_items: " {{ find_results.files }} "
+- name: copy models to remote in individual directories (mulval output is noisy)
+  copy:
+    src:  "{{item.path | relpath('files')}}"
+    dest:  "{{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}"
+  with_items: "{{find_results.files}}"
+  tags: [models,run]
 
 - name: copy scripts to remote
   copy:
     src: "{{ item }}"
-    dest: /tmp/models/curr
+    dest: "{{mulval_models_dir}}"
     mode: 0755
   with_items:
     - mcsim.r
     - genTransMatrix.py
+  tags: run
 
 
 - name: Install packages to run scripts
@@ -71,9 +59,19 @@
     - libmysqlclient-dev
     - python-mysqldb
     - python-pandas
+    - r-base
 
-  #- name: copy output and rename
-  #fetch:
-  #  src: /tmp/AttackGraph.pdf
-  #  dest: /tmp/prefix-{{ inventory_hostname }}.pdf
-  #  flat: yes 
+- name: Install  R packages
+  become: True
+  command: /usr/bin/Rscript --slave --no-save --no-restore-history -e "if (! ('{{item}}' %in% installed.packages()[,'Package'])) install.packages(pkgs='{{item}}', repos=c('http://cran.rstudio.com'))"
+  with_items:
+    - optparse
+    - rPython
+
+      # moved to mulval role for now
+      #- name: sync mulval nvd db (set mulval_sync_nvd to False to disable)
+      #shell: "/bin/bash {{mulval_home}}/utils/nvd_sync.sh"
+      #args:
+      #chdir: "{{mulval_home}}/utils"
+      #when: mulval_sync_nvd == True
+      #tags: [db]

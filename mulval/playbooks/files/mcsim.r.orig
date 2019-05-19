@@ -1,38 +1,11 @@
-#!/usr/bin/env Rscript
 
-library("optparse")
-
-output_formats <- c("png", "pdf", "postscript")
-
-option_list = list(
-  make_option(c("-i", "--input"), type="character", default=NULL,
-	      help="filename of the transition matrix", metavar="character"),
-  make_option(c("-o", "--output"), type="character", default=".",
-              help="output directory name [default= %default]", metavar="character"),
-  make_option(c("-l", "--label"), type="character", default="model_name",
-              help="model name", metavar="character"),
-  make_option(c("-f", "--format"), type="character", default="png",
-              help="output format {png|jpeg|pdf|ps}  [default= %default]", metavar="character")
-);
-
-opt_parser = OptionParser(option_list=option_list);
-opt = parse_args(opt_parser);
-
-if (is.null(opt$input)){
-  print_help(opt_parser)
-  stop("argument must be supplied (input file).n", call.=FALSE)
-}
-
-output_dir <- opt$output
 # read in the transition matrix from attack graph output
 #trans <- read.csv(file="003/current.csv",head=TRUE,sep=",")
 #labelTitle <- "Current:"
 #trans <- read.csv(file="003/sdn_iav.csv",head=TRUE,sep=",")
 #labelTitle <- "SDN IaV:"
-#trans <- read.csv(file="003/sdn_noiav.csv",head=TRUE,sep=",")
-#labelTitle <- "SDN No IaV:"
-trans <- read.csv(file=opt$input,head=TRUE,sep=",")
-labelTitle <- opt$label
+trans <- read.csv(file="003/sdn_noiav.csv",head=TRUE,sep=",")
+labelTitle <- "SDN No IaV:"
 
 # make a column of 1's of length tmatrixlength-1 (for mult at eof)
 # this is (I-Q)^-1 for fundamental matrix convert to row?
@@ -131,24 +104,11 @@ run = function()
   
   #barplot(countStates, main="State Distribution", xlab = "State #", ylab="Count");
   #barplot(countUniqueSessionsLen, main= labelTitle + " State Distribution", xlab = "State #", ylab="Count");
-  plot_sd <- function(device) {
-  do.call(
-    device,
-    args = list(paste(output_dir, paste(paste(labelTitle, "StateDist", sep="_"), device, sep = "."), sep="/"))
-  )
   barplot(countUniqueSessionsLen, main= bquote(paste(.(labelTitle) ~ " State Distribution")), xlab = "State #", ylab="Count");
-  dev.off();
-  }
-  sapply(output_formats, plot_sd)
+  
   
   # plot histogram of the unique session lengths
   #cat("> cus length: ", paste(length(countUniqueSessionsLen)))
-  plot_slh <- function(device) {
-  do.call(
-    device,
-    args = list(paste(output_dir, paste(paste(labelTitle, "SLenHist", sep="_"), device, sep = "."), sep="/"))
-  )
-
   xrange <- 1:150
   yrange <- 1:150
   
@@ -167,9 +127,6 @@ lines(countUniqueSessionsLen, type='h')
 lines(countUniqueSessionsLen, type='b')
 #lines(UniqueSessionsLen, type='S')
 #lines(UniqueSessionsLen)
-dev.off();
-  }
-  sapply(output_formats, plot_slh)
 
   
   #!!!
@@ -201,20 +158,10 @@ dev.off();
   print(NRA)
   
   #bp<-barplot(b,  main=bquote(paste( .(labelTitle) ~ "  Expected Time at State(x)")), xlab = "State ID", ylab="Count", beside=TRUE, names.arg=rownames(b), space=.5, ylim=c(0,max(b)));
-
-  #png(cat(labelTitle, "_ETS.png", sep = ""))
-  #postscript(paste0(labelTitle, "_ETS.png"))
-  plot_ets <- function(device) {
-  do.call(
-    device,
-    args = list(paste(output_dir, paste(paste(labelTitle, "ETS", sep="_"), device, sep = "."), sep="/"))
-  )
   bp<-barplot(NRA,  main=bquote(paste( .(labelTitle) ~ "  Expected Time at State(x)")), xlab = "State ID", ylab="Count", beside=TRUE, names.arg=rownames(b), space=.5, ylim=c(0,max(NRA)));
   text(bp, 0, round(NRA, 1),cex=1,pos=3)
   box()
-  dev.off();
-  }
-  sapply(output_formats, plot_ets)
+  
   cat("> trans:\n");
   print(trans);
   

@@ -1,0 +1,74 @@
+# run mulval experiments
+#
+
+
+- name: get list of file paths
+  find:
+    paths: "{{mulval_models_dir}}"
+    patterns: '*.p,*.P'
+    recurse: yes
+    file_type: file
+  register: find_results
+  tags: run
+
+- name: what we found
+  debug:
+    msg: "{{item}}"
+  with_items: "{{find_results.files}}"
+  tags: run
+
+  # @TODO testing...
+- name: try sourcing /etc/env before mulval run
+  shell: source /etc/environment
+  args:
+    executable: /bin/bash
+  tags: run
+
+  # @TODO not picking up env on 1st pass
+- name:  run mulval
+  shell: bash -lc "graph_gen.sh {{ item.path|basename }} -p -v"
+  args:
+    chdir: "{{(item.path|dirname)}}"  
+  with_items: " {{ find_results.files }} "
+  tags: run
+
+- name: generate transition matrix
+  command: "python {{mulval_models_dir}}/genTransMatrix.py {{(item.path|dirname)}}  {{(item.path|dirname)}}/{{(item.path|basename|splitext)[0]}}.csv"
+  with_items: "{{ find_results.files}}"
+  tags: run
+
+- name: input
+  debug: 
+    msg: "{{(item.path|dirname)}}/{{(item.path|basename|splitext)[0]}}.csv"
+  with_items: "{{find_results.files}}"
+  tags: run
+
+- name: output
+  debug:
+    msg: "{{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}/{{(item.path|basename|splitext)[0]}}_out"
+  with_items: "{{find_results.files}}"
+  tags: run
+
+- name: label
+  debug:
+    msg: "{{(item.path|basename|splitext)[0]}}"
+  with_items: "{{find_results.files}}"
+  tags: run
+
+  
+- name: run simulations and calculate metrics
+  shell: "Rscript {{mulval_models_dir}}/mcsim.r -i {{(item.path|dirname)}}/{{(item.path|basename|splitext)[0]}}.csv -o {{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}/{{(item.path|basename|splitext)[0]}}_out -l {{(item.path|basename|splitext)[0]}} > {{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}/{{(item.path|basename|splitext)[0]}}_out/{{(item.path|basename|splitext)[0]}}.stdout"
+  with_items: "{{ find_results.files}}"
+  tags: run 
+
+- name: fetch results
+  synchronize:
+   mode: pull 
+   src: "{{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}/{{(item.path|basename|splitext)[0]}}_out" 
+   dest: "{{mulval_results_dir}}"
+  with_items: "{{ find_results.files}}"
+  tags: run
+
+
+
+

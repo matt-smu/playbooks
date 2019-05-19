@@ -181,6 +181,7 @@ networkServiceInfo(pe3_c , bgp, tcp, 179, root).
 vulExists(pe4_c, 'CVE-2015-0694', _).
 vulProperty( 'CVE-2015-0694', remoteExploit, privEscalation).
 networkServiceInfo(pe4_c , _, _, _, _).
+
 /*  
 P's can be:
 Cisco CRS1 (IOS XR 4.3)
@@ -211,7 +212,7 @@ SDN (OpenDaylight) vulnerabilities are documented at
 https://wiki.opendaylight.org/view/Security_Advisories
 CVE-2014-5035 - is the only one documented in the NVD DB (XXE info disclosure)
 
-however for our purposes we assume CVE-2015-7501 (remote code execution -> critical (cvss 1)
+however for our purposes we assume CVE-2015-7501 (remote code execution -> critical (cvss 2.5)
 is open and reachable through 6633 
 */
 vulExists(sdn, 'CVE-2015-7501',_).

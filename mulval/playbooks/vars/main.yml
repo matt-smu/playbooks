@@ -1,3 +1,6 @@
+# playbook vars 
+#
+# # mysql
 mysql_root_password: root
 mysql_databases:
   - name: nvd
@@ -8,3 +11,22 @@ mysql_users:
     host: "%"
     password: nvd
     priv: "nvd.*:ALL"
+
+# mulval install vars
+mulval_install_dir: /opt
+
+# mulval run vars
+
+# place models in a directory relative to this play
+mulval_models_dst_dir: /tmp
+mulval_models_src_dir: models
+mulval_models_dir: "{{mulval_models_dst_dir}}/{{mulval_models_src_dir}}"
+mulval_results_dir: "/tmp/mulval_results"
+
+# nvd db params
+mulval_sync_nvd: True # !load the nvd db (slow)
+nvd_db_user: nvd
+nvd_db_pass: nvd
+
+
+
