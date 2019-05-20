@@ -17,16 +17,9 @@
   with_items: "{{find_results.files}}"
   tags: run
 
-  # @TODO testing...
-- name: try sourcing /etc/env before mulval run
-  shell: source /etc/environment
-  args:
-    executable: /bin/bash
-  tags: run
-
   # @TODO not picking up env on 1st pass
 - name:  run mulval
-  shell: bash -lc "graph_gen.sh {{ item.path|basename }} -p -v"
+  shell: bash -lc "{{mulval_home}}/utils/graph_gen.sh {{ item.path|basename }} -p -v"
   args:
     chdir: "{{(item.path|dirname)}}"  
   with_items: " {{ find_results.files }} "
@@ -64,7 +57,8 @@
 - name: fetch results
   synchronize:
    mode: pull 
-   src: "{{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}/{{(item.path|basename|splitext)[0]}}_out" 
+   #src: "{{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}/{{(item.path|basename|splitext)[0]}}_out" 
+   src: "{{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}/" 
    dest: "{{mulval_results_dir}}"
   with_items: "{{ find_results.files}}"
   tags: run
