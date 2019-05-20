@@ -1,0 +1,15 @@
+---
+- name: Netty Perf
+  hosts: all
+  become: yes
+  #strategy: debug
+#   gather_facts: False
+  pre_tasks:
+    - name: Install python 2
+      raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
+      changed_when: False
+    - setup:  
+  tasks:
+  - name: "Setup netty"
+    import_role:
+      name: netty_perf

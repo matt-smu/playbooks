@@ -1,0 +1,10 @@
+---
+
+####
+# Storm build params
+####
+storm_2_repo: git@github.com:matt-smu/storm.git
+sgx_lkl_repo: https://github.com/lsds/sgx-lkl.git
+build_sgx_lkl: true
+build_storm_2: true
+install_docker: false
