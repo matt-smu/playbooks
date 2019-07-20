@@ -1,0 +1,12 @@
+# setup vnd-sdn
+# copies repo to /var/www/html by default
+#
+- name: clone vnd-sdn
+  become: True
+  git:
+    repo: "https://github.com/ramonfontes/vnd.git"
+    dest: "/var/www/html"
+    #version: release-0.22
+  tags: [setup]
+
+

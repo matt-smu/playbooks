@@ -1,0 +1,5 @@
+#
+#- src: https://github.com/geerlingguy/ansible-role-mysql.git
+  #- src: https://github.com/matt-smu/ansible_role_mulval.git  
+  #- src: file:///opt/ansible_modules/roles/ansible_role_mulval
+- src: https://github.com/geerlingguy/ansible-role-php.git
