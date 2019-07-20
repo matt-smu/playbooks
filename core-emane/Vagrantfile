@@ -1,0 +1,44 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  config.vm.define "core-emane" do |config|
+  
+  #config.vm.box = "generic/ubuntu1804"
+  config.vm.box = "bento/ubuntu-18.04"
+  config.vm.synced_folder '.', '/vagrant', disabled: true
+  config.ssh.insert_key = false
+  
+  config.vm.hostname = "core-emane" 
+  config.vm.network :private_network, ip: "192.168.7.7" # should match inventory  
+  
+  # install gui stuff ubuntu
+  config.vm.provision "shell", inline: "sudo apt-add-repository multiverse && sudo apt-get update"
+  config.vm.provision "shell", inline: "sudo apt-get install -y xfce4 virtualbox-guest-dkms virtualbox-guest-utils virtualbox-guest-x11"
+  #config.vm.provision "shell", inline: "sudo apt-get install -y virtualbox-ext-pack"
+  config.vm.provision "shell", inline: "sudo apt-get install -y ifupdown"
+  config.vm.provision "shell", inline: "sudo sed -i 's/allowed_users=.*$/allowed_users=anybody/' /etc/X11/Xwrapper.config"
+  config.vm.provision "shell", inline: "sudo apt-get install -y lightdm lightdm-gtk-greeter"
+  config.vm.provision "shell", inline: "sudo apt-get install -y xfce4-whiskermenu-plugin"
+
+
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = 8096
+    vb.cpus = 4
+    vb.name = "CORE_EMANE"
+    vb.customize ["modifyvm", :id, "--vram", "256"]
+    vb.gui = true
+  end
+
+
+  # Run Ansible from the Vagrant Host
+  config.vm.provision "ansible" do |ansible|
+    ansible.compatibility_mode = "2.0"
+    ansible.playbook = "playbooks/provision.yml"
+    ansible.inventory_path = "inventory"
+    ansible.limit = "all"
+    ansible.verbose = false 
+  end
+
+ end
+end
