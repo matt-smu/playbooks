@@ -3,3 +3,7 @@
 *.swp
 */test/*
 *.orig
+
+*.pdf
+*.ps
+*.log
