@@ -1,0 +1,68 @@
+# setup some mulvals
+# copies models to remote, installs packages, prepares to run 
+
+- name: update apt cache before installing
+  become: True
+  apt:
+    update_cache: yes
+  tags: [setup]
+
+- name: install dependencies
+  become: True
+  apt:
+     name: "{{ packages }}"
+  vars:
+    packages:
+    - python
+    - help2man
+    - python-pip
+    - mininet
+    - python-numpy
+    - python-scipy
+    - python-matplotlib
+  tags: [setup]
+
+
+- name: chown install dir
+  become: True
+  file:
+    path: "{{ mininet_wifi_install_dir }}"
+    state: directory
+    recurse: True
+    owner: vagrant
+    group: vagrant
+    mode: 0755
+  tags: [setup]
+
+- name: mkdir -p dirs before copying
+  file: 
+    path: "{{ mininet_wifi_home }}/"
+    state: directory
+    recurse: True
+    owner: vagrant
+    group: vagrant
+    mode: 0755
+  tags: [setup]
+
+
+- name: update apt cache before installing
+  become: True
+  apt:
+    update_cache: yes
+  tags: [setup]
+
+- name: clone mininet_wifi
+  git:
+    repo: "https://github.com/intrig-unicamp/mininet-wifi"
+    dest: "{{ mininet_wifi_home }}"
+    #version: release-0.22
+  tags: [setup]
+
+- name: run installer
+  become: True
+  shell: util/install.sh -Wnfv
+  args:
+    chdir: "{{ mininet_wifi_home }}"
+    executable: /bin/bash
+  tags: [setup]
+
