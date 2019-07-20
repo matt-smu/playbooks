@@ -153,6 +153,7 @@ def getnodevulns( andNode ):
     scoreDict['execCode implies file access'] = 7.8
     scoreDict['NFS semantics'] = 9.6
     scoreDict['Trojan horse installation'] = 5   
+    scoreDict['local exploit'] = 5   
     
     # determine how we advance and assign a value
     ruleText = nodeNames[andNode]
