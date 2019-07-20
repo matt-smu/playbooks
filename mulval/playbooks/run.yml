@@ -54,13 +54,13 @@
   with_items: "{{ find_results.files}}"
   tags: run 
 
-- name: fetch results
+- name: fetch results (get them all)
   synchronize:
    mode: pull 
    #src: "{{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}/{{(item.path|basename|splitext)[0]}}_out" 
-   src: "{{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}/" 
+   src: "{{mulval_models_dir}}" 
    dest: "{{mulval_results_dir}}"
-  with_items: "{{ find_results.files}}"
+   #with_items: "{{ find_results.files}}"
   tags: run
 
 
