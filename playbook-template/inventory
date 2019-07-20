@@ -1,0 +1,7 @@
+[pb-template]
+192.168.42.42 
+
+[pb-template:vars]
+ansible_ssh_user=vagrant
+ansible_ssh_private_key_file=~/.vagrant.d/insecure_private_key
+ansible_python_interpreter=/usr/bin/python3
