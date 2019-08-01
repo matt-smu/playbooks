@@ -5,7 +5,13 @@
   file:
           path: "{{mulval_models_dir}}"
           state: absent
-  tags: [models,run]
+  tags: [models,run,clean]
+
+- name: remove old rules dir
+  file:
+          path: "{{mulval_custom_rules_dir}}"
+          state: absent
+  tags: [models,run,clean]
 
 - name: mkdir -p dirs before copying
   file: 
@@ -16,10 +22,16 @@
      - "{{mulval_models_src_dir}}/*"
   tags: [models,run]
 
+- name: mulval models dir
+  debug: 
+    msg: "{{mulval_models_src_dir}}"
+  tags: [models,run]
+
 - name: get list of file paths
   delegate_to: localhost
   find: 
     paths: "files/{{mulval_models_src_dir}}"
+    #paths: "files/"
     patterns: '*.p,*.P'
     recurse: yes
     file_type: file
@@ -28,26 +40,41 @@
 
 - name: what we found
   debug: 
-    msg: "{{item.path | relpath('files')}}"
+    msg: "{{ item.path | relpath('files')}}"
   with_items: "{{find_results.files}}"
   tags: models
 
 - name: copy models to remote in individual directories (mulval output is noisy)
   copy:
-    src:  "{{item.path | relpath('files')}}"
+    #src:  "{{item.path | relpath('files')}}"
+    src:  "{{item.path | relpath('{{mulval_models_src}}')}}"
     dest:  "{{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}"
   with_items: "{{find_results.files}}"
   tags: [models,run]
 
+- name: copy custom rules to remote
+  copy:
+    src:  "{{mulval_custom_rules_src}}/"
+    dest: "{{mulval_custom_rules_dir}}"
+  tags: [models,run]
+
+- name: concatenate custom rules (MulVal only takes 1)
+  assemble:
+    src: "{{mulval_custom_rules_dir}}" 
+    dest: "{{mulval_custom_rules_dir}}/custom_rules.P"
+  tags: [models,run]
+  when: mulval_custom_rules_strategy == 'all' # make this too for testing
+
 - name: copy scripts to remote
   copy:
     src: "{{ item }}"
-    dest: "{{mulval_models_dir}}"
+    dest: "{{mulval_results_dir}}"
     mode: 0755
   with_items:
     - mcsim.r
     - genTransMatrix.py
-  tags: run
+    - scoreDict.yml
+  tags: [models, run]
 
 
 - name: Install packages to run scripts
@@ -60,6 +87,8 @@
     - python-mysqldb
     - python-pandas
     - r-base
+    - python-yaml
+  tags: [models, run]
 
 - name: Install  R packages
   become: True
@@ -67,6 +96,7 @@
   with_items:
     - optparse
     - rPython
+  tags: [models, run]
 
       # moved to mulval role for now
       #- name: sync mulval nvd db (set mulval_sync_nvd to False to disable)

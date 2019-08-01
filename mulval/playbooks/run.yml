@@ -2,7 +2,7 @@
 #
 
 
-- name: get list of file paths
+- name: get list of model file paths
   find:
     paths: "{{mulval_models_dir}}"
     patterns: '*.p,*.P'
@@ -11,22 +11,47 @@
   register: find_results
   tags: run
 
-- name: what we found
+- name: models we found
   debug:
-    msg: "{{item}}"
+    msg: "{{item.path}}"
   with_items: "{{find_results.files}}"
   tags: run
 
-  # @TODO not picking up env on 1st pass
-- name:  run mulval
+  #- name: build custom rules command flags
+  #set_fact: crules=(' -d ' + {{findrules_results.files.path}})
+  #set_fact: crules = crules|default("") + ' -d ' +  [ item.path ] 
+  #  with_items: "{{findrules_results.files}}"
+  #tags: run
+
+    # @TODO not picking up env on 1st pass
+- name:  run mulval (all rules)
+  shell: bash -lc "{{mulval_home}}/utils/graph_gen.sh {{ item.path|basename }} -p -v -a {{mulval_custom_rules_dir}}/custom_rules.P "
+  args:
+    chdir: "{{(item.path|dirname)}}"  
+  with_items: " {{ find_results.files }} "
+  tags: run
+  when: mulval_custom_rules_strategy == 'all'
+
+- name:  run mulval (each rule)
+  shell: bash -lc "{{mulval_home}}/utils/graph_gen.sh {{ item.path|basename }} -p -v -a {{mulval_custom_rules_dir}}/{{ item.path|basename }}.rules  "
+  args:
+    chdir: "{{(item.path|dirname)}}"  
+  with_items: " {{ find_results.files }} "
+  tags: run
+  when: mulval_custom_rules_strategy == 'each'
+
+- name:  run mulval (no rules)
   shell: bash -lc "{{mulval_home}}/utils/graph_gen.sh {{ item.path|basename }} -p -v"
   args:
     chdir: "{{(item.path|dirname)}}"  
   with_items: " {{ find_results.files }} "
   tags: run
+  when: mulval_custom_rules_strategy == 'none'
+
+
 
 - name: generate transition matrix
-  command: "python {{mulval_models_dir}}/genTransMatrix.py {{(item.path|dirname)}}  {{(item.path|dirname)}}/{{(item.path|basename|splitext)[0]}}.csv"
+  command: "python {{mulval_results_dir}}/genTransMatrix.py {{(item.path|dirname)}}  {{(item.path|dirname)}}/{{(item.path|basename|splitext)[0]}}.csv"
   with_items: "{{ find_results.files}}"
   tags: run
 
@@ -48,9 +73,14 @@
   with_items: "{{find_results.files}}"
   tags: run
 
+- name: custom rule file is
+  debug:
+    msg: custom_interaction_rules
+  tags: run
+
   
 - name: run simulations and calculate metrics
-  shell: "Rscript {{mulval_models_dir}}/mcsim.r -i {{(item.path|dirname)}}/{{(item.path|basename|splitext)[0]}}.csv -o {{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}/{{(item.path|basename|splitext)[0]}}_out -l {{(item.path|basename|splitext)[0]}} > {{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}/{{(item.path|basename|splitext)[0]}}_out/{{(item.path|basename|splitext)[0]}}.stdout"
+  shell: "Rscript {{mulval_results_dir}}/mcsim.r -i {{(item.path|dirname)}}/{{(item.path|basename|splitext)[0]}}.csv -o {{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}/{{(item.path|basename|splitext)[0]}}_out -l {{(item.path|basename|splitext)[0]}} > {{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}/{{(item.path|basename|splitext)[0]}}_out/{{(item.path|basename|splitext)[0]}}.stdout"
   with_items: "{{ find_results.files}}"
   tags: run 
 
@@ -58,10 +88,10 @@
   synchronize:
    mode: pull 
    #src: "{{mulval_models_dir}}/{{(item.path|basename|splitext)[0]}}/{{(item.path|basename|splitext)[0]}}_out" 
-   src: "{{mulval_models_dir}}" 
-   dest: "{{mulval_results_dir}}"
+   src: "{{mulval_results_dir}}" 
+   dest: "/tmp"
    #with_items: "{{ find_results.files}}"
-  tags: run
+  tags: [run,collect]
 
 
 

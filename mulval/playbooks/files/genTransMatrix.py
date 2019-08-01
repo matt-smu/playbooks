@@ -11,10 +11,13 @@ from sets import ImmutableSet
 from sets import Set
 import string
 import sys
+import yaml
 
 inputDir = sys.argv[1]
 matrixFileName = sys.argv[2]
-
+conf_override = {}
+coalesced_rules = [ ]
+exploit_rules = { }
 orNodes = Set([ ])
 andNodes = Set([ ])
 leafNodes = Set([ ])
@@ -91,7 +94,8 @@ def getMHOrs(  ) :
         for preA in preds[o]:
             ruleText = nodeNames[preA]    
             # check if we need to get exploit id/CVSS score
-            if 'multi-hop access' in ruleText:
+            #if 'multi-hop access' in ruleText:
+            if any(rule in ruleText for rule in coalesced_rules):
                 MHOrs.add(o)
     return MHOrs
 
@@ -99,13 +103,15 @@ def getMHOrs(  ) :
 def getCVSSscore( cveid):
     #score = '1'
     # This dictionary will go in a config file for hypothetical scoring
+    #-- here
     score = 'null' # the score to return
-    cveDict = {} # lookup the advance score by rule text
-    cveDict['CVE-2014-9796'] = 6.8 # Ubuntu 14.04 remote code exec (PCRE)
-    cveDict['CVE-2015-7501'] = 2 # ODL remote code execution      
-    cveDict['CVE-2016-xxxx'] = 9.5 # p3_c exploit from SDN controller
-         
-    
+    #cveDict = {} # lookup the advance score by rule text
+    #cveDict['CVE-2014-9796'] = 6.8 # Ubuntu 14.04 remote code exec (PCRE)
+    #cveDict['CVE-2015-7501'] = 2 # ODL remote code execution      
+    #cveDict['CVE-2016-xxxx'] = 9.5 # p3_c exploit from SDN controller
+#    if not conf_override:     
+    #with open('/tmp/mulval_results/scoreDict.yml') as f:
+    #    conf_override = yaml.safe_load(f)
     try:
         con = MySQLdb.connect('localhost', 'nvd', 'nvd', 'nvd')
         cur = con.cursor(MySQLdb.cursors.DictCursor)            
@@ -116,12 +122,15 @@ def getCVSSscore( cveid):
             #print 'Found cveid ' + cveid + ' with score: ' + str(score)  
 
         else:
-            if cveid in cveDict.keys():            
-                score = cveDict[cveid]  
-                #print 'Matched hypothetical score ' + cveid + ' : ' + str(score)
+            #if cveid in cveDict.keys():            
+            #    score = cveDict[cveid]  
+            #scoreDict = conf_override['scoreDict']
+            if cveid in exploitDict.keys():
+                score = exploitDict[cveid]
+#                print 'Matched hypothetical score ' + cveid + ' : ' + str(score)
                     
             else:
-                #print 'bad cveid (result unknown): setting CVSS to 1!!!**** [' + cveid + ']'
+                print 'bad cveid (result unknown): setting CVSS to 1!!!**** [' + cveid + ']'
                 score = 1
     
     except MySQLdb.Error, e:
@@ -145,21 +154,28 @@ def writeTmatrix(filename):
 # If exploit return a CVE score otherwise return advance type score 
 def getnodevulns( andNode ):
     # This dictionary will go in a config file for hypothetical scoring
+
+    # here
     score = 'null' # the score to return
-    scoreDict = {} # lookup the advance score by rule text
-    scoreDict['direct network access'] = 10
-    scoreDict['NFS shell'] = 9.5
-    #scoreDict['multi-hop access'] = 9
-    scoreDict['execCode implies file access'] = 7.8
-    scoreDict['NFS semantics'] = 9.6
-    scoreDict['Trojan horse installation'] = 5   
-    scoreDict['local exploit'] = 5   
+    #scoreDict = {} # lookup the advance score by rule text
+    #scoreDict['direct network access'] = 10
+    #scoreDict['NFS shell'] = 9.5
+    ##scoreDict['multi-hop access'] = 9
+    #scoreDict['execCode implies file access'] = 7.8
+    #scoreDict['NFS semantics'] = 9.6
+    #scoreDict['Trojan horse installation'] = 5   
+    #scoreDict['local exploit'] = 5   
+#    if not conf_override:
+    #with open('/tmp/mulval_results/scoreDict.yml') as g:
+    #   conf_override = yaml.safe_load(g)
+    #    exploitsDict = conf_override['exploit_rules']
     
     # determine how we advance and assign a value
     ruleText = nodeNames[andNode]
     
     # check if we need to get exploit id/CVSS score
-    if 'remote exploit of a server program' in ruleText: # theres an exploit in the LEAFs
+    #if 'remote exploit of a server program' in ruleText: # theres an exploit in the LEAFs
+    if any(exploit in ruleText for exploit in exploitDict.keys()):  # theres an exploit in the LEAFs
         for p in leafPreds[andNode]: # look for vulnExists() LEAF
             # catch all elements for future use
             # vulnid is in group 2
@@ -184,9 +200,12 @@ def getnodevulns( andNode ):
             #===================================================================
     else: 
         found = False # warn if we cant match this Rule
-        for k in scoreDict.keys():            
+        #if not scoreDict:
+        #scoreDict = conf_override['scoreDict']
+        for k in exploitDict.keys():
+            print '!!!!!!!!!!!!!!!!  ' + k + ' !!!!!!!!!!! '
             if k in ruleText: 
-                score = scoreDict[k]  
+                score = exploitDict[k]
                 found = True
                 
         if not found:
@@ -207,6 +226,12 @@ if len(sys.argv) != 3:
     print '<usage> genTransMatrix.py inputdir outputfile.csv'
     sys.exit()
 
+# configs
+with open('/tmp/mulval_results/scoreDict.yml') as f:
+    conf_override = yaml.safe_load(f)
+    coalesced_rules = conf_override['coalesce_rules']
+    exploitDict = conf_override['exploit_rules']
+
 
 # Identify and initialize all AND/OR nodes    
 verticesFile = open( inputDir + '/VERTICES.CSV', 'r')
@@ -217,6 +242,7 @@ while verticesFile :
     if count == 1 : # line is empty (no more data - break from loop)
         break
 
+    print 'pieces:', pieces
     nodeID = int(pieces[0])
     nodeText = ','.join(pieces[1:count-2]).strip('"')
     nodeType = pieces[count-2].strip('"')
@@ -333,71 +359,94 @@ branchNodes.discard(root) # root should not be marked as a branch node
 
 
 tmatrix = [[0 for x in range(len(nodeNames))] for x in range(len(nodeNames))]
-print 'trmatrix' + str(len(nodeNames)) 
+# print 'trmatrix' + str(len(nodeNames))
 for o in orNodes:
     #print str(o) + ' <- '
     for preA in preds[o]:
-        #print str(preA) + ' <-- '
+        print str(preA) + ' <-- '
         for preO in preds[preA]:
-            #print str(preO) 
-            tmatrix[preO][o] = preA
+            print str(preO)
+            # tmatrix[preO][o] = preA
      
 
-#print DataFrame(tmatrix)
+# print DataFrame(tmatrix)
 
 myorNodes = getORs()
+print 'myorNodes: ', myorNodes
 myMHOrs = getMHOrs()
+print 'myMHORs: ', myMHOrs
+#myorNodes.remove(0) # discard pseudo root
 
-myorNodes.remove(0) # discard pseudo root
+
+# Get the sink (attacker goal node)
+# and add id to tmatrixmap[last slot]
+# needs to happen before rm mhr's
+mysink = 0
+for o in myorNodes:
+    print 'finding sink for o in myorNodes, succs[o]', o, myorNodes, succs[o]
+    if len(succs[o]) == 0: # we have no subsequent nodes
+        mysink = o
+        print 'my sink node: ', mysink
+#if mysink in myorNodes: myorNodes.remove(mysink)
+#if mysink in myMHOrs: myMHOrs.remove(mysink)
+
 
 orcount = len(myorNodes) - len(myMHOrs)# discount the pseudo root added above
+if mysink in myMHOrs: orcount += 1 # add a sink slot if its in MHR
+#if 0 in myorNodes: orcount += 1
+print 'orcount', orcount
 
 # reducedtmatrix will hold just the OR nodes and transition probabilities
 reducedtmatrix = [[0 for x in range(orcount) ] for x in range(orcount) ]
+print reducedtmatrix
 # tmatrixmap holds the mapping from OR node id to reducedtmatrix index
 tmatrixmap = [0 for x in range(orcount) ]
+tmatrixmap[orcount - 1] = mysink
+
+
+print 'myorNodes', str(myorNodes)
+print 'tmatrixmap', str(tmatrixmap)
+
+
 
 # remove MHRs from myorNodes
 for mhor in myMHOrs:
     myorNodes.remove(mhor)
 
+
 ### Map OR nodes into tmatrixmap
-
-
-#print str(myorNodes)
+print 'MAap OR nodes into tmatrixmap', str(myorNodes)
 
 # Get the root node (attacker start node)
 # and add id to tmatrixmap[0]
 myroot = 0
-for o in myorNodes: 
+print 'myorNodes, myroot', myorNodes, myroot
+if myroot in myorNodes: myorNodes.remove(myroot)
+if myroot in myMHOrs: myMHOrs.remove(myroot)
+print 'myorNodes, myroot', myorNodes, myroot
+for o in myorNodes:
+    print myorNodes, myroot
     for preA in preds[o]: # set of parent ANDs
         for preO in preds[preA]: # set of parent ORs
             if preO == 0:
+                print 'preO ==0, myroot = o', preO, o
                 myroot = o
 tmatrixmap[0] = myroot
-myorNodes.remove(myroot)
+print 'tmatrixmap[0] = myroot', tmatrixmap[0], myroot
+print tmatrixmap
+print reducedtmatrix
+if myroot in myorNodes: myorNodes.remove(myroot)
 
-
-# Get the sink (attacker goal node)
-# and add id to tmatrixmap[last slot]
-mysink = 0
-for o in myorNodes: 
-    if len(succs[o]) == 0: # we have no subsequent nodes
-        mysink = o
-tmatrixmap[orcount - 1] = mysink
-myorNodes.remove(mysink)
-
-#print str(myorNodes)
-#print str(tmatrixmap)
 
 # add the rest of the nodes to tmatrixmap
 nodecount = len(tmatrixmap)
+print 'nodecount', nodecount, tmatrixmap, myorNodes
 for i in range (1, nodecount-1):
-    #print str(max(myorNodes))
+    print str(max(myorNodes))
     tmatrixmap[i]= max(myorNodes)
     myorNodes.remove(max(myorNodes))
     
-#print str(myorNodes)
+print str(myorNodes)
 print 'Mapping of nodeIDs to matrix indexes: ' + str(tmatrixmap)
 
 
@@ -406,7 +455,7 @@ print 'Mapping of nodeIDs to matrix indexes: ' + str(tmatrixmap)
 myorNodes = getORs()
 myorNodes.remove(0) # !! not sure if removing pseudoroot will break anything above
 mypreds = preds.copy()
-#print str(preds)
+print str(preds)
 
 # coalesce multihop nodes
 myMHOrs = getMHOrs()
@@ -417,12 +466,16 @@ rtm_copy = copy.deepcopy(reducedtmatrix)
 
 for o in myorNodes: # this OR node
     for preA in mypreds[o]: # preceeding AND nodes
+        print 'preA in mypreds[o]', preA, mypreds[o], o
         for preO in mypreds[preA]: # 1st level parent OR nodes 
-            #print str(preO) 
+            print str(preO)
             theseAnds = mypreds[preO]
+            print 'theseAnds = mypreds[preO]', theseAnds, mypreds[preO], preO
             isMH = False
             for a in theseAnds:
-                if 'multi-hop access' in nodeNames[a]:
+                #if 'multi-hop access' in nodeNames[a]:
+                if any(rule in nodeNames[a] for rule in coalesced_rules):
+                    print 'MH coalesced :' + nodeNames[a]
                     isMH = True
                 
                 
@@ -432,32 +485,41 @@ for o in myorNodes: # this OR node
                     rtm_copy[tmatrixmap.index(preO)][tmatrixmap.index(o)] = preA
                 else: # we got here from multihop (non exploit) so coalesce
                     for preA2 in mypreds[preO]:
+                        print 'preA2 in mypreds[preO]', preA2, mypreds[preO], preO
                         for preO2 in mypreds[preA2]:
-                            reducedtmatrix[tmatrixmap.index(preO2)][tmatrixmap.index(o)] = getnodevulns(preA)
-                            rtm_copy[tmatrixmap.index(preO2)][tmatrixmap.index(o)] = preA
+                            print 'preO2 in mypreds[preA2]', preO2, mypreds[preA2], preA2
+                            if not preO2 == 0: # we're back home
+                                reducedtmatrix[tmatrixmap.index(preO2)][tmatrixmap.index(o)] = getnodevulns(preA)
+                                rtm_copy[tmatrixmap.index(preO2)][tmatrixmap.index(o)] = preA
                             
 
-#print 'Edges between vertices: '
-#print DataFrame(rtm_copy)
-#print DataFrame(reducedtmatrix)
+print 'Edges between vertices: '
+print DataFrame(rtm_copy)
+print DataFrame(reducedtmatrix)
 
 
 # add diagonal entries to reducedtmatrix based on
 # the simple avg of incoming AND node values
 # ** separated this in case it needs attention later
 for o in myorNodes:
+    print 'o in myorNodes: ', o, myorNodes
     sumScores = 0 # hold incoming scores here
     for preA in mypreds[o]:
         myscore = is_number(getnodevulns(preA))
-        #print ' my scores: ' + str(preA) + ' : ' + str(myscore)
+        print ' my scores: ' + str(preA) + ' : ' + str(myscore)
         if myscore: # if we get a numeric value add it to the total
             sumScores += myscore
         else: # otherwise ??? adding 1 for now
-            #print ' couldnt add score ' + preA
+            print ' couldnt add score ' , preA
             sumScores += 1
     # take simple avg until we get a weighting strategy
-    reducedtmatrix[tmatrixmap.index(o)][tmatrixmap.index(o)] = sumScores / len(mypreds[o])
-    #print ' sum scores for node: [' + str(o) + '] - ' + str(sumScores) + ' (' + str(len(mypreds[o])) + ') '
+    if o in mypreds:
+        print ' sum scores for node: [' + str(o) + '] - ' + str(sumScores) + ' (' + str(len(mypreds[o])) + ') '
+        print 'my preds[o]', mypreds[o]
+        reducedtmatrix[tmatrixmap.index(o)][tmatrixmap.index(o)] = sumScores / len(mypreds[o])
+
+    else:
+        print 'o wasnt in my preds: ' , o, mypreds[o]
 #print DataFrame(reducedtmatrix)
 
 
@@ -467,7 +529,8 @@ for i in range(0, len(reducedtmatrix)):
     rowsum =  sum(reducedtmatrix[i])
     for j in range(0, len(reducedtmatrix)):
        #print str(reducedtmatrix[i][j]) + ' / ' + str(sum(reducedtmatrix[i]))
-        reducedtmatrix[i][j] = reducedtmatrix[i][j] / rowsum
+       if rowsum == 0: reducedtmatrix[i][j] == 2
+       else: reducedtmatrix[i][j] = reducedtmatrix[i][j] / rowsum
 
 #print DataFrame(reducedtmatrix)
 print getMHOrs()

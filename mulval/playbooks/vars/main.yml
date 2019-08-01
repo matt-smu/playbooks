@@ -1,6 +1,6 @@
-# playbook vars 
-#
-# # mysql
+---
+# defaults file for mulval
+
 mysql_root_password: root
 mysql_databases:
   - name: nvd
@@ -13,20 +13,47 @@ mysql_users:
     priv: "nvd.*:ALL"
 
 # mulval install vars
+
+
+# mulval install options
 mulval_install_dir: /opt
-
-# mulval run vars
-
-# place models in a directory relative to this play
-mulval_models_dst_dir: /tmp
-mulval_models_src_dir: models
-mulval_models_dir: "{{mulval_models_dst_dir}}/{{mulval_models_src_dir}}"
+mulval_home: "{{ mulval_install_dir }}/mulval"
 mulval_results_dir: "/tmp/mulval_results"
 
-# nvd db params
-mulval_sync_nvd: True # !load the nvd db (slow)
-nvd_db_user: nvd
-nvd_db_pass: nvd
+mulval_models_src_dir: sedap
+mulval_models_dir: "{{mulval_results_dir}}/{{mulval_models_src_dir}}"
 
+mulval_custom_rules_strategy: each # each expects {model_name.P.rules}, all expects custom_rules/*.P, none doesn't look
+mulval_custom_rules_src: custom_rules 
+mulval_custom_rules_dir: "{{mulval_results_dir}}/{{mulval_custom_rules_src}}" 
+#mulval_custum_rules:
+#  - rules_sedap_hijack.P
+#  - rules_sedap_spoof.P
 
+# XSB
+xsb_install_dir: /opt
+xsb_home: "{{ xsb_install_dir }}/XSB"
+
+#xsb_release: https://sourceforge.net/projects/xsb/files/xsb/3.7%20%28Clan%20MacGregor%29/XSB.tar.gz/download
+# latest
+xsb_release: https://sourceforge.net/projects/xsb/files/xsb/3.8%20Three-Buck%20Chuck/XSB38.tar.gz/download
+# undefined reference to `trie_asserted_clref'
+# xsb_release: https://sourceforge.net/projects/xsb/files/xsb/3.6%20%28Gazpatcho%29/XSB360.tar.gz/download
+# x86_64-unknown-linux-gnu
+# xsb_release: https://sourceforge.net/projects/xsb/files/xsb/3.5%20%28Maotai%29/XSB.tar.gz/download
+# x86_64-unknown-linux-gnu
+# xsb_release: https://sourceforge.net/projects/xsb/files/xsb/XSB%203.1%20%28Incognito%29/XSB-unix.tar.gz/download
+# ++Memory violation occurred during evaluation.
+# xsb_release: https://sourceforge.net/projects/xsb/files/xsb/3.0.1%20%28Sagres%29/xsb-3.0.1-src.tar.gz/download
+# xsb_release: https://sourceforge.net/projects/xsb/files/xsb/2.7.1%20%28Kinryo%29/XSB-2.7.1.src.tar.gz/download
+# xsb_release: http://xsb.sourceforge.net/downloads/XSB.tar.gz # latest
+
+# install tools and extras
+tools_install: yes
+
+logtalk_repo_url: https://github.com/LogtalkDotOrg/logtalk3.git
+logtalk_bin_url_deb: https://logtalk.org/files/logtalk_3.27.0-1_all.deb
+
+# mulval run options
+mulval_sync_nvd: False # load the nvd db (slow)
 

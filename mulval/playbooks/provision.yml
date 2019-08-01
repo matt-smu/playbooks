@@ -2,7 +2,6 @@
 - hosts: all
   become: no
   #strategy: debug
-  #gather_facts: False
   gather_facts: True
 
   vars_files:
@@ -14,10 +13,26 @@
 
     - role: ansible_role_mulval
       become: False
+      tags: mulval
 
   tasks:
-    # experiment stuff
+    # deploy Mulval models to inventory hosts
+    # - update NVD CVSS db
     - include_tasks: setup.yml
       tags: [models,run,db]
+    # generate attack graphs for deployed models
     - include_tasks: run.yml 
-      tags: run   
+      tags: [run,collect]   
+    # generate attack graphs for deployed models
+    #- include_tasks: run_mulval.yml 
+    #  tags: run   
+    # create transition matrices for attack graphs
+    #- include_tasks: gen_trans.yml 
+    #  tags: run
+    # setup analysis environment (R, py, Octave,...)
+    #- include_tasks: setup_analysis.yml 
+    #- include_tasks: run_analysis.yml 
+    #  tags: run
+    # format results, collect graphs, ...
+    #- include_tasks: finalize.yml 
+    #  tags: [run,collect,cleanup]

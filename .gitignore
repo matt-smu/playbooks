@@ -3,7 +3,10 @@
 *.swp
 */test/*
 *.orig
-
+**/env
+*.png
 *.pdf
 *.ps
 *.log
+**dotfiles
+**.idea
