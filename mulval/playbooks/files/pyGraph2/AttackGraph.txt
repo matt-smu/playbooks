@@ -1,0 +1,43 @@
+1,"execCode(p3_c,root)","OR",0
+2,"RULE 2 (remote exploit of a server program)","AND",0
+3,"netAccess(p3_c,_,_)","OR",0
+4,"RULE 5 (multi-hop access)","AND",0
+5,"hacl(sdn,p3_c,_,_)","LEAF",1
+4,5,-1
+6,"execCode(sdn,root)","OR",0
+7,"RULE 2 (remote exploit of a server program)","AND",0
+8,"netAccess(sdn,tcp,6633)","OR",0
+9,"RULE 5 (multi-hop access)","AND",0
+10,"hacl(pe1_c,sdn,tcp,6633)","LEAF",1
+9,10,-1
+11,"execCode(pe1_c,_)","OR",0
+12,"RULE 2 (remote exploit of a server program)","AND",0
+13,"netAccess(pe1_c,tcp,179)","OR",0
+14,"RULE 6 (direct network access)","AND",0
+15,"hacl(ce1,pe1_c,tcp,179)","LEAF",1
+14,15,-1
+16,"attackerLocated(ce1)","LEAF",1
+14,16,-1
+13,14,-1
+12,13,-1
+17,"networkServiceInfo(pe1_c,_,tcp,179,_)","LEAF",1
+12,17,-1
+18,"vulExists(pe1_c,'CVE-2010-2784',_,remoteExploit,privEscalation)","LEAF",1
+12,18,-1
+11,12,-1
+9,11,-1
+8,9,-1
+7,8,-1
+19,"networkServiceInfo(sdn,_,tcp,6633,root)","LEAF",1
+7,19,-1
+20,"vulExists(sdn,'CVE-2015-7501',_,remoteExploit,privEscalation)","LEAF",1
+7,20,-1
+6,7,-1
+4,6,-1
+3,4,-1
+2,3,-1
+21,"networkServiceInfo(p3_c,_,_,_,root)","LEAF",1
+2,21,-1
+22,"vulExists(p3_c,'CVE-2016-xxxx',_,remoteExploit,privEscalation)","LEAF",1
+2,22,-1
+1,2,-1

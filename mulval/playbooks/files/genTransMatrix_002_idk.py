@@ -117,12 +117,12 @@ def getCVSSscore( cveid):
         res=cur.fetchone() # the cveid or None it 
         if res:            
             score = res['score']  
-            print 'Found cveid ' + cveid + ' with score: ' + str(score)  
+            #print 'Found cveid ' + cveid + ' with score: ' + str(score)  
 
         else:
-            if cveid in exploitDict.keys():            
-                score = exploitDict[cveid]  
-                print 'Matched hypothetical score ' + cveid + ' : ' + str(score)
+            if cveid in cveDict.keys():            
+                score = cveDict[cveid]  
+                #print 'Matched hypothetical score ' + cveid + ' : ' + str(score)
                     
             else:
                 print 'bad cveid (result unknown): setting CVSS to 1!!!**** [' + cveid + ']'
@@ -146,7 +146,7 @@ def writeTmatrix(filename):
     
 
 # search the given AND node looking for the type of advance. 
-# If CVSS exploit return a CVE score otherwise return advance type score 
+# If exploit return a CVE score otherwise return advance type score 
 def getnodevulns( andNode ):
     # This dictionary will go in a config file for hypothetical scoring
     score = 'null' # the score to return
@@ -160,13 +160,11 @@ def getnodevulns( andNode ):
     #scoreDict['local exploit'] = 5   
     
     # determine how we advance and assign a value
-    
-    #print exploitDict.keys()
     ruleText = nodeNames[andNode]
-    #print ruleText 
+    
     # check if we need to get exploit id/CVSS score
     #if 'remote exploit of a server program' in ruleText: # theres an exploit in the LEAFs
-    if any(ruleText in exploit for exploit in exploitDict.keys()):  # theres an exploit in the LEAFs
+    if any(exploit in ruleText for exploit in exploitDict.keys()):  # theres an exploit in the LEAFs
         for p in leafPreds[andNode]: # look for vulnExists() LEAF
             # catch all elements for future use
             # vulnid is in group 2
@@ -412,7 +410,7 @@ for i in range (1, nodecount-1):
     myorNodes.remove(max(myorNodes))
     
 #print str(myorNodes)
-#print 'Mapping of nodeIDs to matrix indexes: ' + str(tmatrixmap)
+print 'Mapping of nodeIDs to matrix indexes: ' + str(tmatrixmap)
 
 
 # add edges to reducedtmatrix based on
@@ -436,9 +434,7 @@ for o in myorNodes: # this OR node
             theseAnds = mypreds[preO]
             isMH = False
             for a in theseAnds:
-                #if 'multi-hop access' in nodeNames[a]:
-                if any(rule in nodeNames[a] for rule in coalesced_rules):
-                    print 'MH coalesced :' + nodeNames[a]
+                if 'multi-hop access' in nodeNames[a]:
                     isMH = True
                 
                 
@@ -469,7 +465,7 @@ for o in myorNodes:
         if myscore: # if we get a numeric value add it to the total
             sumScores += myscore
         else: # otherwise ??? adding 1 for now
-            print ' couldnt add score: ', preA, getnodevulns(preA)
+            print ' couldnt add score ' + preA
             sumScores += 1
     # take simple avg until we get a weighting strategy
     reducedtmatrix[tmatrixmap.index(o)][tmatrixmap.index(o)] = sumScores / len(mypreds[o])
@@ -480,14 +476,13 @@ for o in myorNodes:
 # normalize the results
 # there are builtins from numpy/scikit to do this better
 for i in range(0, len(reducedtmatrix)):
-    #print reducedtmatrix[i]
     rowsum =  sum(reducedtmatrix[i])
     for j in range(0, len(reducedtmatrix)):
-        #print str(reducedtmatrix[i][j]) + ' / ' + str(sum(reducedtmatrix[i]))
+       #print str(reducedtmatrix[i][j]) + ' / ' + str(sum(reducedtmatrix[i]))
         reducedtmatrix[i][j] = reducedtmatrix[i][j] / rowsum
 
-print DataFrame(reducedtmatrix)
-print getMHOrs()
+#print DataFrame(reducedtmatrix)
+#print getMHOrs()
 
 writeTmatrix(matrixFileName)
 
