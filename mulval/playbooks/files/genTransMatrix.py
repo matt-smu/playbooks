@@ -1,493 +1,707 @@
-#!/usr/bin/python
+#!/usr/bin/env python
+import os
+import re
+import sys
+from collections import Set
+
+import yaml
+import scipy
+import pandas
+import csv
+
+from copy import deepcopy
+
+import networkx as nx
+import matplotlib
+import graphviz as gv
+
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+# from networkx.drawing.nx_pydot import read_dot
+from networkx.drawing.nx_agraph import read_dot, write_dot, graphviz_layout
+
+from networkx.drawing import nx_agraph
+
+import pygraphviz
 
 import MySQLdb
-import copy
-import csv
-from datetime import datetime
-import os
-from pandas import *
-import re
-from sets import ImmutableSet
-from sets import Set
-import string
-import sys
-import yaml
 
-inputDir = sys.argv[1]
-matrixFileName = sys.argv[2]
+import warnings
+
+warnings.simplefilter('ignore', scipy.sparse.SparseEfficiencyWarning)
+
+ARCS = 'ARCS.CSV'
+VERTS = 'VERTICES.CSV'
+AG_DOT = 'AttackGraph.dot'
+SCORE_DICT = 'scoreDict.yml'
+
+exploitDict = {}
 conf_override = {}
-coalesced_rules = [ ]
-exploit_rules = { }
-orNodes = Set([ ])
-andNodes = Set([ ])
-leafNodes = Set([ ])
-cycleNodes = Set([ ])
-irv = { }
-preds = { }
-leafSuccs = { } # ids of nodes this leaf points to 
-leafPreds = { } # ids of leafs that point to this node
-succs = { }
-branchNodes = Set([ ])
-nodeNames = { }
+coalesced_rules = []
+exploit_rules = {}
 
-cycleDependencies = { }
-cycleData = { }
 
-paths = { }
+class AttackGraph(nx.MultiDiGraph):
+    """
+    Class for working with MulVal Attack Graphs.
+    """
 
-phi = { }
-psi = { }
-chi = { }
-delta = { }
+    def __init__(self, data=None, name='', file=None, **kwargs):
+        self.data = read_dot(os.path.join(inputDir, AG_DOT))
+        super(AttackGraph, self).__init__(self.data)
+        # print(self.nodes())
 
-# Variables used in Tarjan's algorithm
-cycles = [ ]
-stack = [ ]
-indices = { }
-lowlink = { }
-tarjanIndex = 0
 
-################################################################################
-# Functions to return copied sets of immediate predecessors / successors
-#   for a single node; also, negated sets of predecessors
+        self.scriptsDir = '.' #os.cwd()
+        if 'scriptsDir' in kwargs.keys():
+            self.scriptsDir = kwargs['scriptsDir']
+            print('scriptsDir: ', self.scriptsDir)
 
-# Return all immediate successors for given node
-def getSuccs( node ) :
-    global succs
-    return succs[node].copy()
+        #self.inputDir = '.' #os.cwd()
+        if 'inputDir' in kwargs.keys():
+            self.inputDir = kwargs['inputDir']
+            print('inputDir: ', self.inputDir)
 
-# Return all immediate predecessors for given node
-def getPreds( node ) :
-    global preds
-    return preds[node].copy()
 
-# Return negation of immmediate predecessors for given node
-def getPredsNeg( node ) :
-    global preds
-    predSet = getPreds(node)
-    negPredSet = Set([ ])
-    for p in predSet :
-        negPredSet.add( -p )
-    return negPredSet
+        with open(self.scriptsDir + '/' + SCORE_DICT) as f:
+            # print(f.readlines())
+            self.conf_override = yaml.safe_load(f)
+            # print('conf_overrides', self.conf_override)
+            self.coalesced_rules = self.conf_override['coalesce_rules']
+            # print('coalesced rules loaded: ', self.coalesced_rules)
+            self.exploit_rules = self.conf_override['exploit_rules']
+            self.exploitDict = self.conf_override['exploitDict']
 
-# try to convert string to number
-# return 'nan' otherwise 
-def is_number(s):
-    try:
-        return float(s)
-        
-    except ValueError:
-        return False
+        self.origin = None
+        self.target = None
+        self.node_list = []
 
-# Return a copy of OR nodes
-def getORs(  ) :
-    global orNodes
-    return orNodes.copy()
+        # add fields not included in dot file
+        self.__updateAG()
 
-# Return copy of 'multihop' (non exploit) OR nodes
-def getMHOrs(  ) :
-    global orNodes
-    myOrs =  copy.deepcopy(orNodes)
-    MHOrs = Set ()
-     
-    for o in myOrs:
-        for preA in preds[o]:
-            ruleText = nodeNames[preA]    
-            # check if we need to get exploit id/CVSS score
-            #if 'multi-hop access' in ruleText:
-            if any(rule in ruleText for rule in coalesced_rules):
-                MHOrs.add(o)
-    return MHOrs
+    # def plot1(self, **kwargs):
+    #
+    #     # labels = self.getPlotNodeLabels()
+    #     # nodePos = nx.layout.spring_layout(self)
+    #     nodePos = graphviz_layout(self, prog='dot')
+    #
+    #     nodeShapes = set((aShape[1]["s"] for aShape in self.nodes(data=True)))
+    #     print(nodeShapes)
+    #
+    #     labels = self.nodes.keys()
+    #     labels = None
+    #
+    #     # For each node class...
+    #     for aShape in nodeShapes:
+    #         # ...filter and draw the subset of nodes with the same symbol in the positions
+    #         # that are now known through the use of the layout.
+    #         nx.draw_networkx_nodes(self, nodePos, with_labels=True, font_weight='bold', labels=labels, node_shape=aShape, nodelist=[sNode[0] for sNode in
+    #                                                                               filter(lambda x: x[1]["s"] == aShape,
+    #                                                                                      self.nodes(data=True))])
+    #
+    #     # Finally, draw the edges between the nodes
+    #     nx.draw_networkx_edges(self,  nodePos, with_labels=True, font_weight='bold',)
+    #
+    #     # nx.draw(self, with_labels=True, font_weight='bold', labels=None)
+    #     plt.show()
 
-# get the CVSS score for a cveid
-def getCVSSscore( cveid):
-    #score = '1'
-    # This dictionary will go in a config file for hypothetical scoring
-    score = 'null' # the score to return
-    #cveDict = {} # lookup the advance score by rule text
-    #cveDict['CVE-2014-9796'] = 6.8 # Ubuntu 14.04 remote code exec (PCRE)
-    #cveDict['CVE-2015-7501'] = 2 # ODL remote code execution      
-    #cveDict['CVE-2016-xxxx'] = 9.5 # p3_c exploit from SDN controller
-         
-    
-    try:
-        con = MySQLdb.connect('localhost', 'nvd', 'nvd', 'nvd')
-        cur = con.cursor(MySQLdb.cursors.DictCursor)            
-        cur.execute("select score from nvd where id = '%s'" % (cveid))
-        res=cur.fetchone() # the cveid or None it 
-        if res:            
-            score = res['score']  
-            print 'Found cveid ' + cveid + ' with score: ' + str(score)  
-
+    def plot2(self, **kwargs):
+        if 'outfilename' in kwargs:
+            outfilename = kwargs.get("outfilename")
         else:
-            if cveid in exploitDict.keys():            
-                score = exploitDict[cveid]  
-                print 'Matched hypothetical score ' + cveid + ' : ' + str(score)
-                    
+            outfilename = 'test.png'
+
+        A = nx.nx_agraph.to_agraph(self)
+        A.layout('dot', args='-Nfontsize=10 -Nwidth=".2" -Nheight=".2" -Nmargin=0 -Gfontsize=8')
+        A.draw(self.inputDir + '/' + outfilename)
+        plt.show()
+
+    def __updateAG(self):
+        for node in self.nodes.keys():
+            if self.nodes[node]['shape'] == 'diamond':
+                self.nodes[node]['type'] = 'OR'
+                self.nodes[node]['color'] = 'blue'
+                self.nodes[node]['s'] = 'd'
+                self.nodes[node]['scores'] = []
+            elif self.nodes[node]['shape'] == 'ellipse':
+                self.nodes[node]['type'] = 'AND'
+                self.nodes[node]['color'] = 'red'
+                self.nodes[node]['s'] = 'o'
+                self.nodes[node]['exploit_rule_score'] = None
+            elif self.nodes[node]['shape'] == 'box':
+                self.nodes[node]['type'] = 'LEAF'
+                self.nodes[node]['color'] = 'green'
+                self.nodes[node]['s'] = 's'
             else:
-                print 'bad cveid (result unknown): setting CVSS to 1!!!**** [' + cveid + ']'
-                score = 1
-    
-    except MySQLdb.Error, e:
-        print "Error %d: %s" % (e.args[0], e.args[1])
-        sys.exit(1)
-    
-    finally:        
-        if con:
-            con.close()      
-    
-    return score
+                print('Unknown node type: ', self.nodes[node]['shape'])
 
-def writeTmatrix(filename):
-    with open(filename, "wb") as f:
-        writer = csv.writer(f)
-        writer.writerow(tmatrixmap)
-        writer.writerows(reducedtmatrix)
-    
+    def getPlotNodeLabels(self):
+        labels = {}
+        colors = []
 
-# search the given AND node looking for the type of advance. 
-# If CVSS exploit return a CVE score otherwise return advance type score 
-def getnodevulns( andNode ):
-    # This dictionary will go in a config file for hypothetical scoring
-    score = 'null' # the score to return
-    #scoreDict = {} # lookup the advance score by rule text
-    #scoreDict['direct network access'] = 10
-    #scoreDict['NFS shell'] = 9.5
-    #scoreDict['multi-hop access'] = 9
-    #scoreDict['execCode implies file access'] = 7.8
-    #scoreDict['NFS semantics'] = 9.6
-    #scoreDict['Trojan horse installation'] = 5   
-    #scoreDict['local exploit'] = 5   
-    
-    # determine how we advance and assign a value
-    
-    #print exploitDict.keys()
-    ruleText = nodeNames[andNode]
-    #print ruleText 
-    # check if we need to get exploit id/CVSS score
-    #if 'remote exploit of a server program' in ruleText: # theres an exploit in the LEAFs
-    if any(ruleText in exploit for exploit in exploitDict.keys()):  # theres an exploit in the LEAFs
-        for p in leafPreds[andNode]: # look for vulnExists() LEAF
-            # catch all elements for future use
-            # vulnid is in group 2
-            # vulExists((webServer,'CAN-2002-0392',httpd,remoteExploit,privEscalation)
-            matchObj = re.match( r'vulExists\((.*),(.*),(.*),(.*),(.*)\)', nodeNames[p], re.M|re.I)
-            
-            # assuming only 1 vuln per AND... 
-            if matchObj:
-                mycveid = matchObj.group(2).strip('\'')
-                #print mycveid
-                score = getCVSSscore(mycveid)
-            #===================================================================
-            # if matchObj:
-            #     print "matchObj.group() : ", matchObj.group()
-            #     print "matchObj.group(1) : ", matchObj.group(1)
-            #     print "matchObj.group(2) : ", matchObj.group(2)
-            #     print "matchObj.group(2) : ", matchObj.group(3)
-            #     print "matchObj.group(2) : ", matchObj.group(4)
-            #     print "matchObj.group(2) : ", matchObj.group(5)
-            # else:
-            #     print "No match!!"
-            #===================================================================
-    else: 
-        found = False # warn if we cant match this Rule
-        #for k in scoreDict.keys():            
-        for k in exploitDict.keys():
-            if k in ruleText: 
-                #score = scoreDict[k]  
-                score = exploitDict[k]  
-                found = True
-                
-        if not found:
-            print '*** Couldnt find rule text (must be added) id: ' + str(andNode) + ' | ' + nodeNames[andNode]
-    
-    return score
+        for node in self.nodes.keys():
+            labels[node] = self.nodes[node]['label']
 
-################################################################################
+        return labels
+
+    def getCVSSscore(self, cveid):
+        score = 'null'  # the score to return
+        con = None
+        print('looking for cveid: ', cveid)
+
+        if cveid in self.exploitDict.keys():  # check user overrides first
+            score = self.exploitDict[cveid]
+            # print('Matched hypothetical score ' + cveid + ' : ' + str(score))
+        else:
+            try:
+                con = MySQLdb.connect('localhost', 'nvd', 'nvd', 'nvd')
+                cur = con.cursor(MySQLdb.cursors.DictCursor)
+                cur.execute("select score from nvd where id = '%s'" % (cveid))
+                res = cur.fetchone()  # the cveid or None it
+                if res:
+                    score = res['score']
+                    print('Found cveid ' + cveid + ' with score: ' + str(score))
+
+                else:
+                    print('bad cveid (result unknown): setting CVSS to 1!!!**** [' + cveid + ']')
+                    score = 1
+            except MySQLdb.Error as e:
+                print("Error %d: %s" % (e.args[0], e.args[1]))
+                sys.exit(1)
+
+            finally:
+                if con:
+                    con.close()
+
+        return score
+
+    def getANDnodes(self):
+        andNodes = [n for n, v in self.nodes(data=True) if v['type'] == 'AND']
+        # print(andNodes)
+        return andNodes
+
+    def getORnodes(self):
+        orNodes = [n for n, v in self.nodes(data=True) if v['type'] == 'OR']
+        print(orNodes)
+        return orNodes
+
+    def getLEAFnodes(self):
+        leafNodes = [n for n, v in self.nodes(data=True) if v['type'] == 'LEAF']
+        print(leafNodes)
+        return leafNodes
+
+    # def add_edge(self, u_for_edge, v_for_edge, key=None, **attr):
+    #
+    #     u, v = u_for_edge, v_for_edge
+    #     # add nodes
+    #     if u not in self._succ:
+    #         self._succ[u] = self.adjlist_inner_dict_factory()
+    #         self._pred[u] = self.adjlist_inner_dict_factory()
+    #         self._node[u] = self.node_attr_dict_factory()
+    #     if v not in self._succ:
+    #         self._succ[v] = self.adjlist_inner_dict_factory()
+    #         self._pred[v] = self.adjlist_inner_dict_factory()
+    #         self._node[v] = self.node_attr_dict_factory()
+    #     if key is None:
+    #         key = self.new_edge_key(u, v)
+    #         # print('******MAKING KEY *****', u, v, key, attr)
+    #     if v in self._succ[u]:
+    #         keydict = self._adj[u][v]
+    #         datadict = keydict.get(key, self.edge_key_dict_factory())
+    #         datadict.update(attr)
+    #         keydict[key] = datadict
+    #     else:
+    #         # selfloops work this way without special treatment
+    #         datadict = self.edge_attr_dict_factory()
+    #         datadict.update(attr)
+    #         keydict = self.edge_key_dict_factory()
+    #         keydict[key] = datadict
+    #         self._succ[u][v] = keydict
+    #         self._pred[v][u] = keydict
+    #
+    #     return key
+
+    def setANDscores(self):
+
+        andNodes = self.getANDnodes()
+        for andNode in andNodes:
+            # set if we are explicit coalesce rule
+            # print('Checking: ', self.nodes[andNode]['label'], self.coalesced_rules)
+            # if any(cr in self.nodes[andNode]['label'] for cr in self.coalesced_rules):
+            self.nodes[andNode]['toCoalesce'] = True
+            print('setting node to coalesce: ', self.nodes[andNode])
+
+            # set if there is a general exploit_rule score
+            if any(xr in self.nodes[andNode]['label'] for xr in self.exploit_rules.keys()):
+                self.nodes[andNode]['toCoalesce'] = False
+                # print('setting node to default exploit score: ', self.nodes[andNode])
+                for xr in self.exploit_rules.keys():
+                    if xr in self.nodes[andNode]['label']:
+                        self.nodes[andNode]['exploit_rule_score'] = self.exploit_rules[xr]
+                        # print('setting node to default exploit score: ', self.nodes[andNode])
+
+                # look for cvss score in leafs
+                leafPreds = [n for n in self.predecessors(andNode) if self.nodes[n]['type'] == 'LEAF']
+                score = None
+                for p in leafPreds:
+                    matchObj = re.match(r'.*:vulExists\((.*),(.*),(.*),(.*),(.*)\):.*', self.nodes[p]['label'],
+                                        re.M | re.I)
+                    # print('looking for cve id in: ', self.nodes[p]['label'], matchObj)
+                    # assuming only 1 vuln per AND...
+                    if matchObj:
+                        mycveid = matchObj.group(2).strip('\'')
+                        # print('finding score for cveid: ', mycveid)
+                        score = self.getCVSSscore(mycveid)
+                        # self.nodes[andNode]['scores'].append(self.nodes[p]['exploit_rule_score'])
+
+                if score:
+                    print('score found, overwriting default for node: ', score,
+                          self.nodes[andNode]['exploit_rule_score'], andNode)
+                    self.nodes[andNode]['exploit_rule_score'] = score
+                else:
+                    print('no score found, preserving default', self.nodes[andNode])
+
+    def scoreANDs(self):
+        andNodes = self.getANDnodes()
+        print('scoreANDs remaining AND nodes: ', andNodes)
+        for a in andNodes:
+            print(self.nodes[a])
+            i_edges = [((u, v, k), e) for u, v, k, e in self.in_edges(a, keys=True, data=True)]
+            o_edges = [((u, v, k), e) for u, v, k, e in self.out_edges(a, keys=True, data=True)]
+            print('a in out: ', a, i_edges, o_edges)
+            # for (u1, v1), (u2, v2) in zip(i_edges, o_edges):
+            if not i_edges or not o_edges:  # we're at root
+                if not i_edges and not o_edges:
+                    print('scoreANDs !!!!!!!!!! Isolated Node !!!!!!!!!!!!!!')
+                if not i_edges:
+                    for ((u2, v2, k2), e2) in o_edges:
+                        print('u2, v2, k2, e2: ', u2, v2, k2, e2)
+                        self.nodes[v2]['scores'].append(self.nodes[a]['exploit_rule_score'])
+                        print('added score to child OR node: ', self.nodes[v2])
+                        # print('making new edge: ', (u1, v2))
+                        self.remove_edge(u2, v2, k2, *e2)
+                        o_edges.remove(((u2, v2, k2), e2))
+                if not o_edges:
+                    for ((u1, v1, k1), e1) in i_edges:
+                        print('u1, v1, k1, e1: ', u1, v1, k1, e1)
+                        self.remove_edge(u1, v1, k1, *e1)
+                        i_edges.remove(((u1, v1, k1), e1))
+
+            else:
+                for ((u1, v1, k1), e1) in i_edges:
+                    print('scoreANDs u1, v1, k1, e1: ', u1, v1, k1, e1)
+                    for ((u2, v2, k2), e2) in o_edges:
+                        print('u2, v2, k2, e2: ', u2, v2, k2, e2)
+
+                        if self.nodes[v2]['type'] != 'OR':
+                            print('not an OR node... something bad happened...')
+
+                        self.nodes[v2]['scores'].append(self.nodes[a]['exploit_rule_score'])
+                        print('added score to child OR node: ', self.nodes[v2])
+                        print('making new edge: ', (u1, v2))
+                        if not v1:  # we're a root
+                            # print('Were at root, no u1 v2 edge: ', (u1, v2))
+                            # self.add_edge(u1, v2)
+                            # self.remove_edge(u1, v1)
+                            # i_edges.remove((u1, v1))
+                            self.remove_edge(u2, v2, k2, *e2)
+                            o_edges.remove(((u2, v2, k2), e2))
+                        elif not u2:  # we're a sink
+                            # print('Were at root, no u1 v2 edge: ', (u1, v2))
+                            # self.add_edge(u1, v2)
+                            # self.remove_edge(u1, v1)
+                            # i_edges.remove((u1, v1))
+                            self.remove_edge(u1, v1, k1, *e1)
+                            o_edges.remove(((u1, v1), e1))
+                        elif v1 == u2:
+                            print('making new edge: ', (u1, v2))
+                            self.add_edge(u1, v2)
+                            self.remove_edge(u1, v1, k1, *e1)
+                            i_edges.remove(((u1, v1, k1), e1))
+                            self.remove_edge(u2, v2, k2, *e2)
+                            o_edges.remove(((u2, v2, k2), e2))
+                        else:
+                            print('ScoreANDs***** I Shouldnt be here *********')
+                        # self.remove_node(a)
+
+    def coalesceANDnodes(self):
+        andNodes = [n for n in self.nodes() if self.nodes[n]['type'] == 'AND' and self.nodes[n]['toCoalesce']]
+        print('andNodes to coalesce: ', andNodes)
+
+        for a in andNodes:
+            i_edges = [((u, v, k), e) for u, v, k, e in self.in_edges(a, keys=True, data=True)]
+            o_edges = [((u, v, k), e) for u, v, k, e in self.out_edges(a, keys=True, data=True)]
+            print('a in out: ', a, i_edges, o_edges)
+            # for (u1, v1), (u2, v2) in zip(i_edges, o_edges):
+            if not i_edges or not o_edges:  # we're at root
+                if not i_edges and not o_edges:
+                    print('coalesceANDnodes !!!!!!!!!! Isolated Node !!!!!!!!!!!!!!')
+                if not i_edges:
+                    for ((u2, v2, k2), e2) in o_edges:
+                        print('u2, v2, k2, e2: ', u2, v2, k2, e2)
+                        self.remove_edge(u2, v2, k2, *e2)
+                        o_edges.remove(((u2, v2, k2), e2))
+                if not o_edges:
+                    for ((u1, v1, k1), e1) in i_edges:
+                        print('u1, v1, k1, e1: ', u1, v1, k1, e1)
+                        self.remove_edge(u1, v1, k1, *e1)
+                        i_edges.remove(((u1, v1, k1), e1))
+
+            else:
+                for ((u1, v1, k1), e1) in i_edges:
+                    print('u1, v1, k1, e1: ', u1, v1, k1, e1)
+                    for ((u2, v2, k2), e2) in o_edges:
+                        print('u2, v2, k2, e2: ', u2, v2, k2, e2)
+                        if not u1:  # we're a root
+                            print('making new edge: ', (u1, v2))
+                            print('coalesceAND - couldnt find v1 - are we a root?', v1)
+                            # self.add_edge(u1, v2)
+                            # self.remove_edge(u1, v1, k1, *e1)
+                            # i_edges.remove(((u1, v1, k1), e1))
+                            self.remove_edge(u2, v2, k2, *e2)
+                            o_edges.remove(((u2, v2, k2), e2))
+
+                        elif not v2:  # we're a sink
+                            # self.add_edge(u1, v2)
+                            print('coalesceAND - couldnt find u1 - are we a sink?', u2, v2)
+                            self.remove_edge(u1, v1, k1, *e1)
+                            i_edges.remove(((u1, v1, k1), e1))
+
+                        elif v1 == u2:
+                            print('making new edge: ', (u1, v2))
+                            self.add_edge(u1, v2)
+                            self.remove_edge(u1, v1, k1, *e1)
+                            i_edges.remove(((u1, v1, k1), e1))
+                            self.remove_edge(u2, v2, k2, *e2)
+                            o_edges.remove(((u2, v2, k2), e2))
+                print('i+o edges: ', i_edges, o_edges, i_edges + o_edges)
+
+    def coalesceORnodes(self):
+        orNodes = [n for n in self.nodes() if self.nodes[n]['type'] == 'OR' and len(self.nodes[n]['scores']) == 0]
+        print('Found ornodes ot coalesce: ', orNodes)
+        loop_count = 1
+        edgeTrash = set()
+        while len(orNodes) > 0:
+            print('starting loop : ', loop_count)
+            print('known OR nodes: ', self.getORnodes())
+            print('myOR nodes: ', orNodes)
+            o = orNodes[0]
+            # for o in orNodes:
+            print(self.nodes[o])
+
+            i_edges = [((u, v, k), e) for u, v, k, e in self.in_edges(o, keys=True, data=True)]
+            o_edges = [((u, v, k), e) for u, v, k, e in self.out_edges(o, keys=True, data=True)]
+            print('coalesceORnodes o in V out: ', o, i_edges, o_edges)
+
+            edgeTrash = set()
+
+            if not i_edges or not o_edges:  # we're at root or sink
+                if not i_edges and not o_edges:
+                    print('coalesceORnodes !!!!!!!!!! Isolated Node !!!!!!!!!!!!!!')
+                elif not i_edges:  # root
+                    for ((u2, v2, k2), e2) in o_edges:
+                        print('iedges: ', i_edges)
+                        print('o, u2, v2, k2, e2: ', o, u2, v2, k2, e2)
+                        self.remove_edge(u2, v2, k2, *e2)
+                        o_edges.remove(((u2, v2, k2), e2))
+                        edgeTrash.add((u2, v2, k2))
+                        print('edgeTrash: ', edgeTrash)
+                        # self.remove_nodes_from(list(nx.isolates(self)))
+                        # i_edges = [(u, v) for u, v, e in self.in_edges(o, keys=True, data=True)]
+                        # o_edges = [(u, v) for u, v, e in self.out_edges(o, keys=True, data=True)]
+                elif not o_edges:  # sink
+                    for ((u1, v1, k1), e1) in i_edges:
+                        print('oedges: ', o_edges)
+                        print('u1, v1 , k, e1: ', u1, v1, k1, e1)
+                        self.remove_edge(u1, v1, k1, *e1)
+                        i_edges.remove(((u1, v1, k1), e1))
+                        # self.remove_nodes_from(list(nx.isolates(self)))
+                        # i_edges = [(u, v) for u, v, e in self.in_edges(o, keys=True, data=True)]
+            else:
+                for ((u1, v1, k1), e1) in i_edges:
+                    print('u1, v1, k,  e1: ', u1, v1, k1, *e1)
+                    for ((u2, v2, k2), e2) in o_edges:
+                        print('u2, v2, k2, e2: ', u2, v2, k2, e2)
+                        if u1 and v2:  # all good
+                            k = self.add_edge(u1, v2)
+                            print('coalesceORnodes making new edge: ', (u1, v2, k), e1)
+                            edgeTrash.add((u1, v1, k1))
+                            print('edgeTrash: ', edgeTrash)
+                            # self.remove_edge(u1, v1, k1, *e1)
+                            # i_edges.remove(((u1, v1, k1), e1))
+                            # self.remove_edge(u2, v2, k2, *e2)
+                            # o_edges.remove(((u2, v2, k2), e2))
+
+                        if not u1:  # we're a root
+                            edgeTrash.add(((u2, v2, k2), e2))
+                            print('edgeTrash: ', edgeTrash)
+                            # self.remove_edge(u2, v2, k2, *e2)
+                            # o_edges.remove(((u2, v2, k2), e2))
+                            print('Root - nothing above to remove')
+                        elif not v2:  # we're a sink
+                            edgeTrash.add(((u1, v1, k1), e1))
+                            print('Take out the trash: ', edgeTrash)
+                            # self.remove_edge(u1, v1, k1, *e1)
+                            # i_edges.remove(((u1, v1, k1), e1))
+                            print('Sink - nothing below to remove')
+
+                print('coalesceORnodes i+o edges: ', i_edges, o_edges, i_edges + o_edges)
+            self.remove_nodes_from(list(nx.isolates(self)))
+            orNodes = [n for n in self.nodes() if self.nodes[n]['type'] == 'OR' and len(self.nodes[n]['scores']) == 0]
+            print('coalesceORnodes ', self.getORnodes())
+            print(orNodes)
+            for o in orNodes:
+                print(self.nodes[o])
+            self.plot2(outfilename=name + '_005_0_coalesceOrs.' + str(loop_count) + '.png')
+
+            self.remove_edges_from(edgeTrash)
+            edgeTrash.clear()
+            loop_count += 1
+
+    def pruneLEAFS(self):
+        leafs = self.getLEAFnodes()
+        self.remove_nodes_from(leafs)
+
+    def setOrigin(self):
+        print('tgraph root node: ', tgraph.origin)
+        if not tgraph.origin:
+            roots = set()
+            for n in self.nodes():
+                print('node n has preds: ', n, list(self.predecessors(n)))
+                print('node n has inbound edges, in_degree:  ', n, self.in_degree(n))
+                if self.in_degree(n) == 0:
+                    roots.add(n)
+                    print('adding root', n, roots)
+            [self.add_edge('0', n) for n in roots]
+
+            # print('found roots', roots, ' count: ', len(roots))
+            if len(roots) != 1: print('weird, should i only using 1st root node: ', roots)
+            self.origin = '0'
+
+            print('tgraph root node: ', tgraph.origin)
+
+    def setEdgeWeights(self):
+
+        # sums scores for all child nodes in self.nodes[n]['succs_sum']
+        for n in self.nodes().keys():
+            self.nodes[n]['succs_sum'] = 0
+            self.nodes[n]['succs_count'] = 0
+            print('n successors: ', n, list(self.successors(n)))
+            if not n in self.successors(n): # add self ref in not exists
+                self.add_edge(n, n)
+                print('adding n successors: ', n, list(self.successors(n)))
+            for s in list(self.successors(n)): # add up successor scores for edge weighting
+                if 'scores' in self.nodes[s].keys():
+                    self.nodes[n]['succs_sum'] += sum(self.nodes[s]['scores'])
+                    self.nodes[n]['succs_count'] +=1
+                    print('scores for node, succs_count, succs_sum: ', n,  self.nodes[s]['scores'],
+                          self.nodes[n]['succs_count'], self.nodes[n]['succs_sum'])
+                else:
+                    self.nodes[s]['scores'] = [(0)]
+                    self.nodes[n]['succs_count'] += 1
+
+        # set edge weights as fraction of sum_succs
+        # for n in self.nodes():
+        #     print(self.edges.data(keys=True, data=True))
+        for u, v, k, d in self.edges.data(keys=True, data=True):
+            print('(u, v) u[succs_sum], v[scores]: ', '(', u, ',', v, ')  [',  sum(self.nodes[v]['scores']), '/',
+                  self.nodes[u]['succs_sum'], ']')
+            d['weight'] = sum(self.nodes[v]['scores']) / self.nodes[u]['succs_sum']
+            d['label'] = round(d['weight'], 2) # only for labelling edges in img
+        print(self.edges.data(keys=True, data=True))
 
 
-################################################################################
-################################################################################
-## Main code block
-################################################################################
-################################################################################
+    def getTransMatrix(self, tgraph,  **kwargs):
 
-if len(sys.argv) != 3:
-    print '<usage> genTransMatrix.py inputdir outputfile.csv'
-    sys.exit()
+        # if 'inputDir' in kwargs.keys():
+        #     self.inputDir = kwargs['inputDir']
+        # if 'outfileName' in kwargs.keys():
+        #     self.outfileName = kwargs['outfileName']
 
-# load user configs
-with open('/tmp/mulval_results/scoreDict.yml') as f:
-    conf_override = yaml.safe_load(f)
-    coalesced_rules = conf_override['coalesce_rules']
-    exploitDict = conf_override['exploit_rules']
+        # tgraph = deepcopy(self)
+        tgraph = tgraph
 
-# Identify and initialize all AND/OR nodes    
-verticesFile = open( inputDir + '/VERTICES.CSV', 'r')
-while verticesFile :
-    # Read line from file, split into various values
-    pieces = verticesFile.readline().strip().split(',')
-    count = len(pieces)
-    if count == 1 : # line is empty (no more data - break from loop)
-        break
+        # 1. set AND node exploit score
+        #    either default value of AND text or CVSS lookup
+        tgraph.setANDscores()
+        tgraph.plot2(outfilename=self.name + '_001_setANDscores.png')
 
-    nodeID = int(pieces[0])
-    nodeText = ','.join(pieces[1:count-2]).strip('"')
-    nodeType = pieces[count-2].strip('"')
-    nodeVal = float(pieces[count-1])
-    # If OR/AND-node, add to node sets
-    if nodeType == 'OR' or nodeType == 'AND':   
-        nodeNames[nodeID] = nodeText
-        preds[nodeID] = Set([ ])
-        succs[nodeID] = Set([ ])
-        chi[nodeID] = Set([ ])
-        delta[nodeID] = Set([ ])
-        if nodeType == 'OR':
-            orNodes.add(nodeID)          
-        else : # type == '"AND"'
-            andNodes.add(nodeID)
-            irv[nodeID] = nodeVal            
-            leafPreds[nodeID] = Set([ ])
-    
-    # If LEAF node add to node set 
-    if nodeType == 'LEAF':
-        nodeNames[nodeID] = nodeText
-        leafSuccs[nodeID] = Set([ ])
-        leafNodes.add(nodeID)
-        
-        
-verticesFile.close()
+        # 2. remove LEAF nodes after scores applied
+        tgraph.pruneLEAFS()
+        print('Removing dead nodes: ', list(nx.isolates(tgraph)))
+        tgraph.remove_nodes_from(list(nx.isolates(tgraph)))
+        tgraph.plot2(outfilename=self.name + '_002_pruneLEAFs.png')
 
-# Create virtual root node, initialize values
-root = 0
-preds[root] = Set([ ])
-succs[root] = Set([ ])
-chi[root] = Set([ ])
-delta[root] = Set([ ])
-orNodes.add(root)
+        # 3. Join edges passing through this and (multi-hop, no exploit)
+        tgraph.coalesceANDnodes()
+        print('Removing dead nodes: ', list(nx.isolates(tgraph)))
+        tgraph.remove_nodes_from(list(nx.isolates(tgraph)))
+        tgraph.plot2(outfilename=self.name + '_003_coalesceANDs.png')
 
-phi[root] = 1 # need to change if actually keeping graph risk value
-#if root in branchNodes :
-#    setPsiValue( root, root, 1 )
+        # 4. push AND exploit_score down to child or score dicts
+        tgraph.scoreANDs()
+        print('Removing dead nodes: ', list(nx.isolates(tgraph)))
+        tgraph.remove_nodes_from(list(nx.isolates(tgraph)))
+        tgraph.plot2(outfilename=self.name + '_004_scoreANDs.png')
 
-# Record all edges in approprioate predecessor/successor sets
-arcsFile = open(inputDir + '/ARCS.CSV', 'r')
-#arcsFile.readline() # ignore first line in file
-while arcsFile :
-    # Read line from file, split into various values
-    pieces = arcsFile.readline().strip().split(',')
-    count = len(pieces)
-    if count == 1 : # line is empty (no more data - break from loop)
-        break
+        # 5. remove or nodes with empty score dict
+        tgraph.coalesceORnodes()
+        print('Removing dead nodes: ', list(nx.isolates(tgraph)))
+        tgraph.remove_nodes_from(list(nx.isolates(tgraph)))
+        tgraph.plot2(outfilename=self.name + '_005_coalesceORs.png')
 
-    src = int(pieces[0])
-    dst = int(pieces[1])
-    # weight is third piece, not used currently
-    if dst in ( orNodes | andNodes ) : #dst is *not* a LEAF-node
-        # Reverse edges
-        preds[src].add(dst)
-        succs[dst].add(src)
-      
-    if dst in (leafNodes) : # track leaf nodes
-        leafSuccs[dst].add(src)
-        leafPreds[src].add(dst)
-        
-arcsFile.close()
+        # 6. add root note for entry handle
+        # print('tgraph root node: ', tgraph.has_node('0'))
+        tgraph.setOrigin()
+        # print('tgraph root node: ', tgraph.has_node('0'))
+        tgraph.plot2(outfilename=self.name + '_006_addOrigin.png')
 
-# Add branches from root node
-for nd in andNodes :
-    if not preds[nd] : # if AND-node has no predecessors
-        preds[nd].add(root) # add root as predecessor to node
-        succs[root].add(nd) # add node as successor to root
-
-# Identify all branch nodes
-for n in orNodes : # consider all OR-nodes
-    if len( succs[n] ) > 1 : # if more than one successor
-        branchNodes.add(n) # mark as branch node
-branchNodes.discard(root) # root should not be marked as a branch node
+        # 7. add edge weights
+        tgraph.setEdgeWeights()
+        tgraph.plot2(outfilename=self.name + '_007_weighEdges.png')
 
 
-# Print collected data, for verification
+        # for n in tgraph.nodes():
+        #     print(tgraph.nodes[n])
 
-#===============================================================================
-# 
-# print "** Nodes [" + str(len(orNodes) + len(andNodes) + len(leafNodes)) + "] ** "
-# for n in orNodes :
-#     print n
-# for n in andNodes:
-#     print str(n) + ", " + str(irv[n])
-# for n in leafNodes:
-#     print n
-# 
-# print "** Edges ** "
-# for src in succs :
-#     print str(src) + " -- ",
-#     for dst in succs[src] :
-#         print str(dst) + '  ',
-#     print
-# 
-# for k in preds.keys():
-#     print 'Predecessors of ' + str(k) + ': ' + str(preds[k])
-# 
-# for k in leafSuccs.keys():
-#     print ' Nodes of this leaf ' + str(k) + ': ' + str(leafSuccs[k])
-# 
-# for k in leafPreds.keys():
-#     print 'Leaves on Node ' + str(k) + ': ' + str(leafPreds[k]) 
-#     for p in leafPreds[k] :
-#         print 'leaf text ' + str(p) + ': ' + nodeNames[p] 
-#===============================================================================
+        # orNodes = tgraph.getORnodes()
+        # print('or nodes before: ', orNodes)
+        # for n in orNodes:
+        #     # print('set or node: ', n, type(n))
+        #     tgraph.setORscore(n)
+        #     print(tgraph.nodes[n])
+        # print('or nodes after: ', orNodes)
+
+        tmatrix = tgraph.convertTMatrix()
 
 
-# tmatrix maintains node id by creating a nxn matrix where n 
-# is the total number of nodes (ORs, ANDs, and LEAFs) in the MulVal output
-# 
-# tmatrix places the id of the AND node connecting 2 OR nodes
-#  in the slot tmatrix[col][row] = tmatrix[parentORnode][childORnode] <- andNodeID
+        # print(type(tmatrix))
+        # tmatrix.setdiag(1)
+        # print(tmatrix.todense())
+        # print('nodes: ', tgraph.nodes())
+
+        # for n in tgraph.nodes():
+        #     print(tgraph[n])
+        # tm_data = nx.adjacency_data(tgraph)
+        # for k in tm_data.keys():
+        #     print(k, tm_data[k])
+
+        outfile = 'test.csv'
+        if 'matrixFileName' in kwargs.keys():
+            outfile = kwargs['matrixFileName']
+
+        print('header type: ', type(tgraph.node_list), tgraph.node_list)
+        self.writeTmatrix(header=tgraph.node_list, tmatrix=tmatrix)
 
 
-tmatrix = [[0 for x in range(len(nodeNames))] for x in range(len(nodeNames))]
-#print 'trmatrix' + str(len(nodeNames)) 
-for o in orNodes:
-    #print str(o) + ' <- '
-    for preA in preds[o]:
-        #print str(preA) + ' <-- '
-        for preO in preds[preA]:
-            #print str(preO) 
-            tmatrix[preO][o] = preA
-     
-
-#print DataFrame(tmatrix)
-
-myorNodes = getORs()
-myMHOrs = getMHOrs()
-
-myorNodes.remove(0) # discard pseudo root
-
-orcount = len(myorNodes) - len(myMHOrs)# discount the pseudo root added above
-
-# reducedtmatrix will hold just the OR nodes and transition probabilities
-reducedtmatrix = [[0 for x in range(orcount) ] for x in range(orcount) ]
-# tmatrixmap holds the mapping from OR node id to reducedtmatrix index
-tmatrixmap = [0 for x in range(orcount) ]
-
-# remove MHRs from myorNodes
-for mhor in myMHOrs:
-    myorNodes.remove(mhor)
-
-### Map OR nodes into tmatrixmap
+        return tmatrix
 
 
-#print str(myorNodes)
 
-# Get the root node (attacker start node)
-# and add id to tmatrixmap[0]
-myroot = 0
-for o in myorNodes: 
-    for preA in preds[o]: # set of parent ANDs
-        for preO in preds[preA]: # set of parent ORs
-            if preO == 0:
-                myroot = o
-tmatrixmap[0] = myroot
-myorNodes.remove(myroot)
+    def convertTMatrix(self):
+        """
+        transforms for writing to disk, adding nodes header, setting weights, etc
+        :return:
+        """
+        source = None
+        sink = None
+        transit = {}
 
 
-# Get the sink (attacker goal node)
-# and add id to tmatrixmap[last slot]
-mysink = 0
-for o in myorNodes: 
-    if len(succs[o]) == 0: # we have no subsequent nodes
-        mysink = o
-tmatrixmap[orcount - 1] = mysink
-myorNodes.remove(mysink)
 
-#print str(myorNodes)
-#print str(tmatrixmap)
+        tvs_ = [(n, v) for n, v in tgraph.nodes(data=True)]
+        for (n, v) in tvs_:
 
-# add the rest of the nodes to tmatrixmap
-nodecount = len(tmatrixmap)
-for i in range (1, nodecount-1):
-    #print str(max(myorNodes))
-    tmatrixmap[i]= max(myorNodes)
-    myorNodes.remove(max(myorNodes))
-    
-#print str(myorNodes)
-#print 'Mapping of nodeIDs to matrix indexes: ' + str(tmatrixmap)
+            # set sinks sources
+            if tgraph.in_degree(n) == 1: source = n
+            if tgraph.out_degree(n) == 0: sink = n
+            if tgraph.in_degree(n) != 1 and tgraph.out_degree(n) != 0: transit[n]=v
 
 
-# add edges to reducedtmatrix based on
-# the new index mapping
-myorNodes = getORs()
-myorNodes.remove(0) # !! not sure if removing pseudoroot will break anything above
-mypreds = preds.copy()
-#print str(preds)
-
-# coalesce multihop nodes
-myMHOrs = getMHOrs()
-for mhor in myMHOrs:
-    myorNodes.remove(mhor)
-
-rtm_copy = copy.deepcopy(reducedtmatrix)
-
-for o in myorNodes: # this OR node
-    for preA in mypreds[o]: # preceeding AND nodes
-        for preO in mypreds[preA]: # 1st level parent OR nodes 
-            #print str(preO) 
-            theseAnds = mypreds[preO]
-            isMH = False
-            for a in theseAnds:
-                #if 'multi-hop access' in nodeNames[a]:
-                if any(rule in nodeNames[a] for rule in coalesced_rules):
-                    print 'MH coalesced :' + nodeNames[a]
-                    isMH = True
-                
-                
-            if not preO == 0: # if we're not off the root (already removed)
-                if not isMH: # if we're not coalescing add this to tmatrix
-                    reducedtmatrix[tmatrixmap.index(preO)][tmatrixmap.index(o)] = getnodevulns(preA)
-                    rtm_copy[tmatrixmap.index(preO)][tmatrixmap.index(o)] = preA
-                else: # we got here from multihop (non exploit) so coalesce
-                    for preA2 in mypreds[preO]:
-                        for preO2 in mypreds[preA2]:
-                            reducedtmatrix[tmatrixmap.index(preO2)][tmatrixmap.index(o)] = getnodevulns(preA)
-                            rtm_copy[tmatrixmap.index(preO2)][tmatrixmap.index(o)] = preA
-                            
-
-#print 'Edges between vertices: '
-#print DataFrame(rtm_copy)
-#print DataFrame(reducedtmatrix)
+        # build node list for tmatrix header
+        self.node_list.append(source)
+        tmp = list(transit.keys())
+        for n in range(len(tmp)):
+            a = max([int(i) for i in tmp])
+            # print('added a to nodelist', a, type(str(a)), node_list)
+            self.node_list.append(str(a))
+            tmp.remove(str(a))
 
 
-# add diagonal entries to reducedtmatrix based on
-# the simple avg of incoming AND node values
-# ** separated this in case it needs attention later
-for o in myorNodes:
-    sumScores = 0 # hold incoming scores here
-    for preA in mypreds[o]:
-        myscore = is_number(getnodevulns(preA))
-        #print ' my scores: ' + str(preA) + ' : ' + str(myscore)
-        if myscore: # if we get a numeric value add it to the total
-            sumScores += myscore
-        else: # otherwise ??? adding 1 for now
-            print ' couldnt add score: ', preA, getnodevulns(preA)
-            sumScores += 1
-    # take simple avg until we get a weighting strategy
-    reducedtmatrix[tmatrixmap.index(o)][tmatrixmap.index(o)] = sumScores / len(mypreds[o])
-    #print ' sum scores for node: [' + str(o) + '] - ' + str(sumScores) + ' (' + str(len(mypreds[o])) + ') '
-#print DataFrame(reducedtmatrix)
+        # node_list.append(sink)
+        print('added sink to nodelist', sink, self.node_list)
+        assert(len(self.node_list) == len(tgraph.nodes()))
+        print('len(node_list) == len(tgraph.nodes())', len(self.node_list), ' == ',  len(tgraph.nodes()))
 
 
-# normalize the results
-# there are builtins from numpy/scikit to do this better
-for i in range(0, len(reducedtmatrix)):
-    #print reducedtmatrix[i]
-    rowsum =  sum(reducedtmatrix[i])
-    for j in range(0, len(reducedtmatrix)):
-        #print str(reducedtmatrix[i][j]) + ' / ' + str(sum(reducedtmatrix[i]))
-        reducedtmatrix[i][j] = reducedtmatrix[i][j] / rowsum
 
-print DataFrame(reducedtmatrix)
-print getMHOrs()
 
-writeTmatrix(matrixFileName)
+        tmatrix = nx.adjacency_matrix(tgraph, self.node_list)
 
+
+
+
+
+
+        # print(tmatrix)
+        print(tmatrix.todense())
+
+
+
+        return tmatrix
+
+
+
+
+            # print('node | in_degree | out_degree: ', n, ' | ', tgraph.in_degree(n), ' | ', tgraph.out_degree(n))
+            # print('tgraph', n, v)
+
+    def writeTmatrix(self, header=None, tmatrix=None):
+        # print('header: ', filename, header, tmatrix.todense())
+        # print('Types tmatrix, dense: ', type(tmatrix), type(tmatrix.todense()))
+
+        #filename = self.inputDir + '/' + self.outfileName + '.csv'
+        filename =  self.inputDir + '/' + self.name + '.csv'
+        print('Writing transition matrix to: ', filename)
+        pandas.DataFrame(tmatrix.todense()).round(decimals=2).to_csv(filename, header=header, index=False )
+        # with open(filename, "w") as f:
+        #     writer = csv.writer(f)
+        #     writer.writerow(header)
+        #     writer.writerows(tmatrix.todense())
+
+
+if __name__ == '__main__':
+    if len(sys.argv) != 4:
+        print('<usage> genTransMatrix.py inputdir outputfile customScoresDir')
+        sys.exit()
+
+    # if len(sys.argv) != 4:
+    #     print('<usage> genTransMatrix.py inputdir run_name')
+    #     inputDir = os.getcwd()
+    #     matrixFileName = 'a.csv'
+    #     name = 'nameMe'
+    # else:
+        # read inputDir/AttackGraph.dot
+    inputDir = sys.argv[1]
+    outfileName = sys.argv[2]
+    scriptsDir = sys.argv[3]
+        # write transMatrix.csv
+        # matrixFileName = sys.argv[2] + '.csv'
+    matrixFileName = inputDir + '/' + sys.argv[2] + '.csv'
+    name =  sys.argv[2]
+
+    A = AttackGraph(inputDir=inputDir, scriptsDir=scriptsDir)
+    A.name = name
+
+    A.plot2(outfilename= name + '_001_orig.png')
+    tgraph = deepcopy(A)
+
+    # make transition matrix
+    # A.getANDnodes()
+    # A.getORnodes()
+    # A.getLEAFnodes()
+
+    tmatrix = A.getTransMatrix(tgraph, inputDir=inputDir, outfileName=outfileName)
+    # tgraph.writeTmatrix(matrixFileName, header=A.node_list, tmatrix=tmatrix)
+
+    # print(tmatrix)

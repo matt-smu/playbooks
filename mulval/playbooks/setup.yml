@@ -74,6 +74,7 @@
     - mcsim.r
     - genTransMatrix.py
     - scoreDict.yml
+    - requirements.txt
   tags: [models, run]
 
 
@@ -84,11 +85,22 @@
   vars:
     packages:
     - libmysqlclient-dev
-    - python-mysqldb
-    - python-pandas
+    - python3-mysqldb
+    - python3-pandas
     - r-base
-    - python-yaml
+    - python3-yaml
+    - python3-pip
+    - graphviz
+    - libgraphviz-dev
+    - pkg-config
   tags: [models, run]
+
+- name: install pip3 requirements
+  pip:
+    requirements: "{{mulval_results_dir}}/requirements.txt"
+    executable: pip3
+  tags: [models, run]
+
 
 - name: Install  R packages
   become: True

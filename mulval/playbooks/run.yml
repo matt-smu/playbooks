@@ -48,10 +48,8 @@
   tags: run
   when: mulval_custom_rules_strategy == 'none'
 
-
-
 - name: generate transition matrix
-  command: "python {{mulval_results_dir}}/genTransMatrix.py {{(item.path|dirname)}}  {{(item.path|dirname)}}/{{(item.path|basename|splitext)[0]}}.csv"
+  command: "python3 {{mulval_results_dir}}/genTransMatrix.py {{(item.path|dirname)}}  {{(item.path|basename|splitext)[0]}} {{mulval_results_dir}}"
   with_items: "{{ find_results.files}}"
   tags: run
 
