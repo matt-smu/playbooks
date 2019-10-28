@@ -1,0 +1,22 @@
+---
+- hosts: all
+  become: yes
+
+  #strategy: debug
+  #gather_facts: False
+
+  #  pre_tasks:
+  # - name: Install python 2
+  #   become: True
+  #   raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
+  #   changed_when: False
+  # - action: setup
+
+  roles:
+    - role: roles/ansible-role-pkb
+      become: True
+
+  tasks:
+    #- include_tasks: run_pkb.yml
+       # https://github.com/ansible/ansible/issues/33693
+       #   role_path: roles/ansible-role-pkb

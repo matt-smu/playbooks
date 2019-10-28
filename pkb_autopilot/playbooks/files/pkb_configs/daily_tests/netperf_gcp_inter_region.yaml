@@ -1,0 +1,26 @@
+#import anchors.yaml
+#benchmark netperf
+
+netperf:
+  description: run netperf TCP RR
+  flag_matrix: inter_region
+  flag_matrix_filters:
+    inter_region: "zones < extra_zones"
+  flag_matrix_defs:
+    inter_region:
+      zones: [us-central1-c, us-east1-b, us-east4-c, us-west1-b]
+      extra_zones: [us-east1-b, us-east4-c, us-west1-b, us-west2-a]
+      machine_type: [n1-standard-16]
+  flags:
+    cloud: GCP
+    netperf_histogram_buckets: 1000
+    netperf_benchmarks: TCP_RR
+
+  # vm_groups:
+    #   vm_1:
+    #     vm_spec: *default_machine
+    #     disk_spec: *default_50_gb
+    #   vm_2:
+    #     vm_spec: *default_machine
+    #     disk_spec: *default_50_gb
+    

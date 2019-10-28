@@ -1,0 +1,49 @@
+#scoreDict:
+#  'direct network access': 10
+#  'NFS shell': 9.5
+#  'execCode implies file access': 7.8
+#  'NFS semantics': 9.6
+#  'Trojan horse installation': 5
+#  'local exploit': 5
+#  'any machine he has an account on will also be compromised': 9
+#  'through a log-in service': 9
+#  'CVE-2014-9796': 6.8
+#  'CVE-2015-7501': 2
+#  'CVE-2016-xxxx': 9.5
+
+# @TODO assign rule id
+coalesce_rules: # list of rules to coalesce
+#- 'NFS shell'
+#- 'execCode implies file access'
+#- 'NFS semantics'
+#- 'When a principal is compromised any machine he has an account on will also be compromised'
+  - 'na_001'
+  - 'na_002'
+  - 'multi-hop access by gateway'
+  - 'multi-hop access'
+  - 'direct on-host access'
+    #  - 'direct network access'
+  - 'log in for ftpd'
+  - 'Access a host through a log-in service'
+
+# @TODO assign rule id
+exploit_rules: # dict of rules to add to tmatrix
+  'arpSpoofVuln': 7
+  'password sniffing through spoof': 7
+  'remote exploit of a server program': 1
+  'Trojan horse installation': 5
+  'local exploit': 5
+  'CVE-2014-9796': 6.8
+  'CVE-2009-2048': 6.8
+  'CVE-2015-7501': 2
+  'CVE-2016-xxxx': 9.5
+  'CAN-2002-0392': 9.5
+  'vulID': 9.5
+  'direct network access': 10
+  'NFS shell': 9.5
+  'execCode implies file access': 7.8
+  'NFS semantics': 9.6
+  'Trojan horse installation': 5
+  'local exploit': 5
+  'any machine he has an account on will also be compromised': 9
+  'through a log-in service': 9   

@@ -1,0 +1,37 @@
+---
+####
+# PKB params
+####
+pkb_repo: "https://github.com/GoogleCloudPlatform/PerfKitBenchmarker.git"
+#pkb_version: "HEAD"
+pkb_version: "73a9cda2fc4944dee76083b70a055bd5a0ea5e49"
+pkb_home: "/opt/pkb"
+
+pkb_publish_flags: ""
+# pkb_publish_flags: "--bigquery_table=daily_test.gartner --bq_project=smu-benchmarking"
+pkb_flags: "reuse_ssh_connections=False"
+#pkb_flags: " --run_processes=1 --collectd=true --dstat=true --dstat_interval=1 --dstat_publish=true --dstat_publish_regex=.* "
+
+####
+# gcloud service account params
+####
+# https://cloud.google.com/sdk/docs/authorizing
+# https://cloud.google.com/compute/docs/access/create-enable-service-accounts-for-instances#tools
+# Create a service acct in IAM and grant Editor role. Copy json key to templates/service_key.json and edit below
+gcloud_service_email: sa-daily-test@cloud-performance-tool.iam.gserviceaccount.com
+gcloud_project_id: cloud-performance-tool
+
+####
+# gcloud service account params
+####
+#log_runs: true
+log_runs: false
+log_runs_bucket: pkb_run_logs
+
+#@TODO refactor stackdriver to its own role
+stackdriver_setup: fales
+
+# test params
+test_dir: pkb_configs_min
+# test_dir: pkb_configs
+#test_dir: gartner_tests

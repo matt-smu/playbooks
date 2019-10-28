@@ -1,0 +1,13 @@
+
+# https://public.cyber.mil/pki-pke/end-users/getting-started/linux/
+# https://public.cyber.mil/pki-pke/end-users/getting-started/linux-firefox/
+
+-name: add coolkey pkgs
+  become: True
+  package:
+    name: "{{ packages }}"
+    state: present
+  vars:
+    packages:
+    - coolkey
+

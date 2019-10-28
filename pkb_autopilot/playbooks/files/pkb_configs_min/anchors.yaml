@@ -1,0 +1,108 @@
+# Anchors
+
+###########
+# machines
+###########
+default_machine: &default_machine
+  GCP:
+    machine_type: n1-standard-16
+    zone: us-east4-b
+    image: null
+  AWS:
+    machine_type: c5d.4xlarge
+    zone: us-east-1b
+    image: null
+    
+###########
+# disks
+########### 
+default_500_gb: &default_500_gb
+  GCP:
+    disk_type: pd-standard
+    disk_size: 500
+    mount_point: /scratch
+  AWS:
+    disk_type: standard
+    disk_size: 500
+    mount_point: /scratch
+    
+default_50_gb: &default_50_gb
+  GCP:
+    disk_type: pd-standard
+    disk_size: 50
+    mount_point: /scratch
+  AWS:
+    disk_type: standard
+    disk_size: 50
+    mount_point: /scratch
+    
+remote_ssd_500_gb: &remote_ssd_500_gb
+  GCP:
+    disk_type: pd-ssd
+    disk_size: 500
+    mount_point: /scratch
+  AWS:
+    disk_type: gp2
+    disk_size: 500
+    mount_point: /scratch
+    
+remote_ssd_50_gb: &remote_ssd_50_gb
+  GCP:
+    disk_type: pd-ssd
+    disk_size: 50
+    mount_point: /scratch
+  AWS:
+    disk_type: gp2
+    disk_size: 50
+    mount_point: /scratch
+
+    
+###########
+# fmatrix vars
+###########
+###########
+# regions & zones
+###########
+# gcloud compute zones list | awk -vORS=, '{print $1}' | sed 's/,$/\n/'
+zones: &gcp_zones_all [us-east1-b,us-east1-c,us-east1-d,us-east4-c,us-east4-b,us-east4-a,us-central1-c,us-central1-a,us-central1-f,us-central1-b,us-west1-b,us-west1-c,us-west1-a,europe-west4-a,europe-west4-b,europe-west4-c,europe-west1-b,europe-west1-d,europe-west1-c,europe-west3-b,europe-west3-c,europe-west3-a,europe-west2-c,europe-west2-b,europe-west2-a,asia-east1-b,asia-east1-a,asia-east1-c,asia-southeast1-b,asia-southeast1-a,asia-southeast1-c,asia-northeast1-b,asia-northeast1-c,asia-northeast1-a,asia-south1-c,asia-south1-b,asia-south1-a,australia-southeast1-b,australia-southeast1-c,australia-southeast1-a,southamerica-east1-b,southamerica-east1-c,southamerica-east1-a,asia-east2-a,asia-east2-b,asia-east2-c,europe-north1-a,europe-north1-b,europe-north1-c,northamerica-northeast1-a,northamerica-northeast1-b,northamerica-northeast1-c,us-west2-a,us-west2-b,us-west2-c]
+zones: &gcp_zones_all_conus [us-east1-b,us-east1-c,us-east1-d,us-east4-c,us-east4-b,us-east4-a,us-central1-c,us-central1-a,us-central1-f,us-central1-b,us-west1-b,us-west1-c,us-west2-a,us-west2-b,us-west2-c]
+zones: &gcp_zones_east1 [us-east1-b,us-east1-c,us-east1-d]
+zones: &gcp_zones_east4 [us-east4-c,us-east4-b,us-east4-a]
+zones: &gcp_zones_central1 [us-central1-c,us-central1-a,us-central1-f,us-central1-b]
+zones: &gcp_zones_west1 [us-west1-b,us-west1-c]
+zones: &gcp_zones_west2 [us-west2-a,us-west2-b,us-west2-c]
+###########
+# disk types
+###########
+# gcloud compute disk-types list
+disk_types: &gcp_disk_types [pd-standard,pd-ssd,local-ssd]
+###########
+# machine_types
+###########
+#gcloud compute machine-types list | awk '{print $1}' | sort | uniq | awk -vORS=, '{print $1}'
+machine_types: &gcp_machine_types_all [f1-micro,g1-small,n1-highcpu-16,n1-highcpu-2,n1-highcpu-32,n1-highcpu-4,n1-highcpu-64,n1-highcpu-8,n1-highcpu-96,n1-highmem-16,n1-highmem-2,n1-highmem-32,n1-highmem-4,n1-highmem-64,n1-highmem-8,n1-highmem-96,n1-megamem-96,n1-standard-1,n1-standard-16,n1-standard-2,n1-standard-32,n1-standard-4,n1-standard-64,n1-standard-8,n1-standard-96,n1-ultramem-160,n1-ultramem-40,n1-ultramem-80]
+machine_types: &gcp_machine_types_small [f1-micro,g1-small]
+machine_types: &gcp_machine_types_standard [n1-standard-1,n1-standard-16,n1-standard-2,n1-standard-32,n1-standard-4,n1-standard-64,n1-standard-8,n1-standard-96]
+machine_types: &gcp_machine_types_highcpu [n1-highcpu-16,n1-highcpu-2,n1-highcpu-32,n1-highcpu-4,n1-highcpu-64,n1-highcpu-8,n1-highcpu-96]
+machine_types: &gcp_machine_types_highmem [n1-highmem-16,n1-highmem-2,n1-highmem-32,n1-highmem-4,n1-highmem-64,n1-highmem-8,n1-highmem-96]
+# @TODO add megamem and ultramem as needed
+###########
+# GCP CPU Types (only min architecture guaranteed 
+###########
+gcp_min_cpu_platform: &gcp_min_cpu_platform [sandybridge,ivybridge,haswell,broadwell,skylake]
+
+###########
+# Test Variables
+###########
+
+###########
+# iperf
+###########
+iperf_sending_thread_count: &iperf_sending_thread_count_1_5  [1,5]
+iperf_sending_thread_count: &iperf_sending_thread_count_1_32_2  [1,2,4,8,16,32]
+
+###########
+# netperf
+###########
+netperf_num_streams: &netperf_num_streams [1,5,10,20]
+netperf_test_length: &netperf_test_length [60, 300, 600, 3000] # seconds

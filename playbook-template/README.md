@@ -18,4 +18,4 @@
 
 ### handy ansible commands
 
-1. 
+1. ansible-playbook -i inventory --private-key ~/.vagrant.d/insecure_private_key -u vagrant playbooks/provision.yml --tags setup 

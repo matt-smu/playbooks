@@ -1,0 +1,37 @@
+#import anchors.yaml
+#benchmark iperf
+
+iperf:
+  flag_matrix: fmatrix
+  flag_matrix_filters:
+      fmatrix: "zones < extra_zones"
+  flag_matrix_defs:
+      fmatrix:
+        zones: *gcp_zones_east1
+        extra_zones: *gcp_zones_east1
+        machine_type: [n1-standard-16]
+        
+  flags:
+    cloud: GCP
+    iperf_sending_thread_count: 5
+    iperf_runtime_in_seconds: 60
+
+  # vm_groups:
+  #   vm_1:
+  #     vm_spec: *default_machine
+  #   vm_2:
+  #     vm_spec: *default_machine
+
+
+  # iperf:
+  # vm_groups:
+  #   vm_1:
+  #     cloud: GCP
+  #     vm_spec:
+  #       GCP: 
+  #         zone: us-central1-b
+  #   vm_2:
+  #     cloud: GCP
+  #     vm_spec:
+  #       GCP: 
+  #         zone: europe-west1-d

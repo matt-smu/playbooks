@@ -462,21 +462,47 @@ class AttackGraph(nx.MultiDiGraph):
         leafs = self.getLEAFnodes()
         self.remove_nodes_from(leafs)
 
+    # def setOrigin(self):
+    #     print('tgraph root node: ', tgraph.origin)
+    #     if not tgraph.origin:
+    #         roots = set()
+    #         for n in self.nodes():
+    #             print('node n has preds: ', n, list(self.predecessors(n)))
+    #             print('node n has inbound edges, in_degree:  ', n, self.in_degree(n))
+    #             if self.in_degree(n) == 0:
+    #                 roots.add(n)
+    #                 print('adding root', n, roots)
+    #         [self.add_edge('0', n) for n in roots]
+    #
+    #         # print('found roots', roots, ' count: ', len(roots))
+    #         if len(roots) != 1: print('weird, should i only using 1st root node: ', roots)
+    #         self.origin = '0'
+    #
+    #         print('tgraph root node: ', tgraph.origin)
+
     def setOrigin(self):
         print('tgraph root node: ', tgraph.origin)
         if not tgraph.origin:
             roots = set()
-            for n in self.nodes():
-                print('node n has preds: ', n, list(self.predecessors(n)))
-                print('node n has inbound edges, in_degree:  ', n, self.in_degree(n))
-                if self.in_degree(n) == 0:
+            self.origin = '0'
+            for n in self.getLEAFnodes():
+                # print('node n has preds: ', n, list(self.predecessors(n)))
+                # print('node n has inbound edges, in_degree:  ', n, self.in_degree(n))
+                print('node n has attribute: ', self.nodes[n]['label'])
+                if 'attackerLocated' in self.nodes[n]['label']:
                     roots.add(n)
                     print('adding root', n, roots)
-            [self.add_edge('0', n) for n in roots]
+            o_edges = [((u, v, k), e) for u, v, k, e in self.out_edges(roots, keys=True, data=True)]
+            for r in roots:
+                for ((u2, v2, k2), e2) in o_edges:
+                    print('Adding to new root: u2, v2, k2, e2: ', u2, v2, k2, e2)
+                    self.add_edge(self.origin, v2, k2, *e2)
+
+            # [self.add_edge('0', n) for n in roots]
 
             # print('found roots', roots, ' count: ', len(roots))
             if len(roots) != 1: print('weird, should i only using 1st root node: ', roots)
-            self.origin = '0'
+            self.nodes[self.origin]['type'] = 'ROOT'
 
             print('tgraph root node: ', tgraph.origin)
 
@@ -521,6 +547,12 @@ class AttackGraph(nx.MultiDiGraph):
         # tgraph = deepcopy(self)
         tgraph = tgraph
 
+
+        # print('tgraph root node: ', tgraph.has_node('0'))
+        tgraph.setOrigin()
+        # print('tgraph root node: ', tgraph.has_node('0'))
+        tgraph.plot2(outfilename=self.name + '_000.6_addOrigin.png')
+
         # 1. set AND node exploit score
         #    either default value of AND text or CVSS lookup
         tgraph.setANDscores()
@@ -550,11 +582,11 @@ class AttackGraph(nx.MultiDiGraph):
         tgraph.remove_nodes_from(list(nx.isolates(tgraph)))
         tgraph.plot2(outfilename=self.name + '_005_coalesceORs.png')
 
-        # 6. add root note for entry handle
-        # print('tgraph root node: ', tgraph.has_node('0'))
-        tgraph.setOrigin()
-        # print('tgraph root node: ', tgraph.has_node('0'))
-        tgraph.plot2(outfilename=self.name + '_006_addOrigin.png')
+        # # 6. add root note for entry handle
+        # # print('tgraph root node: ', tgraph.has_node('0'))
+        # tgraph.setOrigin()
+        # # print('tgraph root node: ', tgraph.has_node('0'))
+        # tgraph.plot2(outfilename=self.name + '_006_addOrigin.png')
 
         # 7. add edge weights
         tgraph.setEdgeWeights()

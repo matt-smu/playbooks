@@ -1,0 +1,6 @@
+# install roles in ansible-galaxy
+# https://docs.ansible.com/ansible/latest/reference_appendices/galaxy.html
+# ansible-galaxy install -r requirements.yml
+
+- src: https://github.com/matt-smu/ansible-role-pkb.git  
+  #- src: file:///opt/ansible_modules/roles/ansible_role_mulval # can't read --role-path in here?

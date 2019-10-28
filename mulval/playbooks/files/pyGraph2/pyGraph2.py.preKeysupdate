@@ -485,7 +485,7 @@ class AttackGraph(nx.MultiDiGraph):
         tgraph.coalesceORnodes()
         print('Removing dead nodes: ', list(nx.isolates(tgraph)))
         tgraph.remove_nodes_from(list(nx.isolates(tgraph)))
-        tgraph.plot2(outfilename=self.name + '_005_coalesceORs.png')
+        tgraph.plot2(outfilename=self.name + '_005_coalesceORs.png')z
 
         for n in tgraph.nodes():
             print(tgraph.nodes[n])

@@ -1,0 +1,54 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+VAGRANTFILE_API_VERSION = "2"
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+   #config.vm.box = "bento/ubuntu-18.04" # ubuntu 18.04 (PKB standard)
+   #config.vm.box = "ubuntu/bionic64" # ubuntu 14.04 (PKB standard)
+   #config.vm.box = "ubuntu/trusty64" # ubuntu 14.04 (PKB standard)
+    config.vm.box = "generic/ubuntu1804"                                              
+
+  config.vm.provider "virtualbox" do |v|
+    config.vm.synced_folder '.', '/vagrant', disabled: true
+  end
+    config.ssh.insert_key = false                                                                                                                                                                                                                                                                      
+
+
+
+#  config.vm.box = "google/gce"  
+#   https://github.com/mitchellh/vagrant-google
+#   vagrant plugin install vagrant-google
+  #config.vm.provider :google do |google, override|
+  config.vm.provider "google" do |google, override|
+    override.vm.box = "google/gce"  
+    google.google_project_id = "cloud-performance-tool"
+    google.google_client_email = "sa-daily-test@cloud-performance-tool.iam.gserviceaccount.com"
+    google.google_json_key_location = "/opt/attvc/projects/google/pkb/vagrant_pkb/playbooks/roles/pkb/templates/service_key.json"
+    #google.image_family = 'ubuntu-1404-lts'
+    google.image_family = 'ubuntu-1804-lts'
+    
+    override.ssh.username = "pkb"
+    override.ssh.private_key_path = "~/.ssh/google_compute_engine"
+  end
+
+
+#  config.vm.hostname = "pkb_autopilot"                                                                                                                       
+  config.vm.network :private_network, ip: "192.168.5.5"                                                                                             
+                                                                                                                                                      
+  # Run Ansible from the Vagrant Host                                                                                                                 
+  config.vm.provision "ansible" do |ansible|                                                                                                          
+    ansible.compatibility_mode = "2.0"                                                                                                                
+    ansible.playbook = "playbooks/provision.yml"                                                                                                      
+    ansible.inventory_path = "inventory"                                                                                                              
+    ansible.limit = "all"                                                                                                                             
+    ansible.verbose = false                                                                                                                           
+  end 
+
+
+# Run Ansible from the Vagrant Host
+#  config.vm.provision "ansible" do |ansible|
+#    ansible.playbook = "playbooks/pkb.yml"
+#  end
+
+end

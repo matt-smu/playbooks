@@ -1,0 +1,36 @@
+##############                                                                                                                                        
+# execute tests                                                                                                                                       
+##############                                                                                                                                        
+- name: "remove old tests if they exist"                                                                                                              
+  file:                                                                                                                                               
+    path: "{{ pkb_home }}/perfkitbenchmarker/configs/daily_tests"                                                                                     
+    state: absent                                                                                                                                     
+                                                                                                                                                      
+- name: "copy pkb daily tests to remote"                                                                                                              
+  copy:                                                                                                                                               
+    src: "{{ role_path }}/files/{{ test_dir }}/"                                                                                                      
+    dest: "{{ pkb_home }}/perfkitbenchmarker/configs"                                                                                                 
+                                                                                                                                                      
+- name: "run daily tests"                                                                                                                             
+  shell: find ./perfkitbenchmarker/configs/daily_tests/ -iname *.yaml -printf "%f\n" | while read CONFIGFILE; do BENCHMARK=$(grep '#benchmark' perfkitbenchmarker/configs/daily_tests/$CONFIGFILE | awk '{ print $2 }' ); ./pkb.py --project={{ gcloud_project_id }} --benchmark_config_file=daily_tests/$CONFIGFILE --benchmarks=$BENCHMARK {{ pkb_publish_flags }} {{ pkb_flags }}; done
+  args:                                                                                                                                               
+#     executable: /bin/bash # causes ssh timeouts on iperf runs                                                                                       
+    chdir: "{{ pkb_home }}"                                                                                                                           
+#   register: output                                                                                                                                  
+                                                                                                                                                      
+# - name: 'Display output'                                                                                                                            
+#   debug:                                                                                                                                            
+#     msg: '{{ output.stdout }}'                                                                                                                      
+                                                                                                                                                      
+# @Todo: rsync/synchronize /tmp/perfkit/* run logs back to host?                                                                                      
+# - name: "Create an empty bucket"                                                                                                                    
+#   gc_storage:                                                                                                                                       
+#     bucket: "{{ log_runs_bucket }}"                                                                                                                 
+#     mode: create                                                                                                                                    
+#     permission: private                                                                                                                             
+#   when: log_runs == true                                                                                                                            
+                                                                                                                                                      
+# https://cloud.google.com/storage/docs/gsutil/commands/rsync                                                                                         
+- name: "Upload /tmp/perfkitbenchmarker/runs/*"                                                                                                       
+  shell: gsutil -m rsync -r /tmp/perfkitbenchmarker/runs/ gs://{{ log_runs_bucket }}                                                                  
+  when: log_runs == true 

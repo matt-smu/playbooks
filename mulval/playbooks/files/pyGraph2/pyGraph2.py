@@ -6,6 +6,7 @@ from collections import Set
 
 import yaml
 import scipy
+import pandas
 import csv
 
 from copy import deepcopy
@@ -32,6 +33,7 @@ warnings.simplefilter('ignore', scipy.sparse.SparseEfficiencyWarning)
 ARCS = 'ARCS.CSV'
 VERTS = 'VERTICES.CSV'
 AG_DOT = 'AttackGraph.dot'
+SCORE_DICT = 'scoreDict.yml'
 
 exploitDict = {}
 conf_override = {}
@@ -44,12 +46,24 @@ class AttackGraph(nx.MultiDiGraph):
     Class for working with MulVal Attack Graphs.
     """
 
-    def __init__(self, data=None, name='', inputDir='/tmp', file=None, **attr):
+    def __init__(self, data=None, name='', file=None, **kwargs):
         self.data = read_dot(os.path.join(inputDir, AG_DOT))
         super(AttackGraph, self).__init__(self.data)
         # print(self.nodes())
 
-        with open('scoreDict.yml') as f:
+
+        self.scriptsDir = '.' #os.cwd()
+        if 'scriptsDir' in kwargs.keys():
+            self.scriptsDir = kwargs['scriptsDir']
+            print('scriptsDir: ', self.scriptsDir)
+
+        #self.inputDir = '.' #os.cwd()
+        if 'inputDir' in kwargs.keys():
+            self.inputDir = kwargs['inputDir']
+            print('inputDir: ', self.inputDir)
+
+
+        with open(self.scriptsDir + '/' + SCORE_DICT) as f:
             # print(f.readlines())
             self.conf_override = yaml.safe_load(f)
             # print('conf_overrides', self.conf_override)
@@ -57,6 +71,10 @@ class AttackGraph(nx.MultiDiGraph):
             # print('coalesced rules loaded: ', self.coalesced_rules)
             self.exploit_rules = self.conf_override['exploit_rules']
             self.exploitDict = self.conf_override['exploitDict']
+
+        self.origin = None
+        self.target = None
+        self.node_list = []
 
         # add fields not included in dot file
         self.__updateAG()
@@ -95,7 +113,7 @@ class AttackGraph(nx.MultiDiGraph):
 
         A = nx.nx_agraph.to_agraph(self)
         A.layout('dot', args='-Nfontsize=10 -Nwidth=".2" -Nheight=".2" -Nmargin=0 -Gfontsize=8')
-        A.draw(outfilename)
+        A.draw(self.inputDir + '/' + outfilename)
         plt.show()
 
     def __updateAG(self):
@@ -444,9 +462,96 @@ class AttackGraph(nx.MultiDiGraph):
         leafs = self.getLEAFnodes()
         self.remove_nodes_from(leafs)
 
-    def getTransMatrix(self, tgraph):
+    # def setOrigin(self):
+    #     print('tgraph root node: ', tgraph.origin)
+    #     if not tgraph.origin:
+    #         roots = set()
+    #         for n in self.nodes():
+    #             print('node n has preds: ', n, list(self.predecessors(n)))
+    #             print('node n has inbound edges, in_degree:  ', n, self.in_degree(n))
+    #             if self.in_degree(n) == 0:
+    #                 roots.add(n)
+    #                 print('adding root', n, roots)
+    #         [self.add_edge('0', n) for n in roots]
+    #
+    #         # print('found roots', roots, ' count: ', len(roots))
+    #         if len(roots) != 1: print('weird, should i only using 1st root node: ', roots)
+    #         self.origin = '0'
+    #
+    #         print('tgraph root node: ', tgraph.origin)
+
+    def setOrigin(self):
+        print('tgraph root node: ', tgraph.origin)
+        if not tgraph.origin:
+            roots = set()
+            self.origin = '0'
+            for n in self.getLEAFnodes():
+                # print('node n has preds: ', n, list(self.predecessors(n)))
+                # print('node n has inbound edges, in_degree:  ', n, self.in_degree(n))
+                print('node n has attribute: ', self.nodes[n]['label'])
+                if 'attackerLocated' in self.nodes[n]['label']:
+                    roots.add(n)
+                    print('adding root', n, roots)
+            o_edges = [((u, v, k), e) for u, v, k, e in self.out_edges(roots, keys=True, data=True)]
+            for r in roots:
+                for ((u2, v2, k2), e2) in o_edges:
+                    print('Adding to new root: u2, v2, k2, e2: ', u2, v2, k2, e2)
+                    self.add_edge(self.origin, v2, k2, *e2)
+
+            # [self.add_edge('0', n) for n in roots]
+
+            # print('found roots', roots, ' count: ', len(roots))
+            if len(roots) != 1: print('weird, should i only using 1st root node: ', roots)
+            self.nodes[self.origin]['type'] = 'ROOT'
+
+            print('tgraph root node: ', tgraph.origin)
+
+    def setEdgeWeights(self):
+
+        # sums scores for all child nodes in self.nodes[n]['succs_sum']
+        for n in self.nodes().keys():
+            self.nodes[n]['succs_sum'] = 0
+            self.nodes[n]['succs_count'] = 0
+            print('n successors: ', n, list(self.successors(n)))
+            if not n in self.successors(n): # add self ref in not exists
+                self.add_edge(n, n)
+                print('adding n successors: ', n, list(self.successors(n)))
+            for s in list(self.successors(n)): # add up successor scores for edge weighting
+                if 'scores' in self.nodes[s].keys():
+                    self.nodes[n]['succs_sum'] += sum(self.nodes[s]['scores'])
+                    self.nodes[n]['succs_count'] +=1
+                    print('scores for node, succs_count, succs_sum: ', n,  self.nodes[s]['scores'],
+                          self.nodes[n]['succs_count'], self.nodes[n]['succs_sum'])
+                else:
+                    self.nodes[s]['scores'] = [(0)]
+                    self.nodes[n]['succs_count'] += 1
+
+        # set edge weights as fraction of sum_succs
+        # for n in self.nodes():
+        #     print(self.edges.data(keys=True, data=True))
+        for u, v, k, d in self.edges.data(keys=True, data=True):
+            print('(u, v) u[succs_sum], v[scores]: ', '(', u, ',', v, ')  [',  sum(self.nodes[v]['scores']), '/',
+                  self.nodes[u]['succs_sum'], ']')
+            d['weight'] = sum(self.nodes[v]['scores']) / self.nodes[u]['succs_sum']
+            d['label'] = round(d['weight'], 2) # only for labelling edges in img
+        print(self.edges.data(keys=True, data=True))
+
+
+    def getTransMatrix(self, tgraph,  **kwargs):
+
+        # if 'inputDir' in kwargs.keys():
+        #     self.inputDir = kwargs['inputDir']
+        # if 'outfileName' in kwargs.keys():
+        #     self.outfileName = kwargs['outfileName']
+
         # tgraph = deepcopy(self)
         tgraph = tgraph
+
+
+        # print('tgraph root node: ', tgraph.has_node('0'))
+        tgraph.setOrigin()
+        # print('tgraph root node: ', tgraph.has_node('0'))
+        tgraph.plot2(outfilename=self.name + '_000.6_addOrigin.png')
 
         # 1. set AND node exploit score
         #    either default value of AND text or CVSS lookup
@@ -477,6 +582,17 @@ class AttackGraph(nx.MultiDiGraph):
         tgraph.remove_nodes_from(list(nx.isolates(tgraph)))
         tgraph.plot2(outfilename=self.name + '_005_coalesceORs.png')
 
+        # # 6. add root note for entry handle
+        # # print('tgraph root node: ', tgraph.has_node('0'))
+        # tgraph.setOrigin()
+        # # print('tgraph root node: ', tgraph.has_node('0'))
+        # tgraph.plot2(outfilename=self.name + '_006_addOrigin.png')
+
+        # 7. add edge weights
+        tgraph.setEdgeWeights()
+        tgraph.plot2(outfilename=self.name + '_007_weighEdges.png')
+
+
         # for n in tgraph.nodes():
         #     print(tgraph.nodes[n])
 
@@ -502,7 +618,17 @@ class AttackGraph(nx.MultiDiGraph):
         # for k in tm_data.keys():
         #     print(k, tm_data[k])
 
+        outfile = 'test.csv'
+        if 'matrixFileName' in kwargs.keys():
+            outfile = kwargs['matrixFileName']
+
+        print('header type: ', type(tgraph.node_list), tgraph.node_list)
+        self.writeTmatrix(header=tgraph.node_list, tmatrix=tmatrix)
+
+
         return tmatrix
+
+
 
     def convertTMatrix(self):
         """
@@ -513,41 +639,46 @@ class AttackGraph(nx.MultiDiGraph):
         sink = None
         transit = {}
 
-        node_list = []
+
 
         tvs_ = [(n, v) for n, v in tgraph.nodes(data=True)]
         for (n, v) in tvs_:
 
             # set sinks sources
-            if tgraph.in_degree(n) == 0: source = n
+            if tgraph.in_degree(n) == 1: source = n
             if tgraph.out_degree(n) == 0: sink = n
-            if tgraph.in_degree(n) != 0 and tgraph.out_degree(n) != 0: transit[n]=v
+            if tgraph.in_degree(n) != 1 and tgraph.out_degree(n) != 0: transit[n]=v
 
 
         # build node list for tmatrix header
-        node_list.append(source)
+        self.node_list.append(source)
         tmp = list(transit.keys())
         for n in range(len(tmp)):
             a = max([int(i) for i in tmp])
-            print('added a to nodelist', a, type(str(a)), node_list)
-            node_list.append(str(a))
+            # print('added a to nodelist', a, type(str(a)), node_list)
+            self.node_list.append(str(a))
             tmp.remove(str(a))
 
 
-        node_list.append(sink)
-        print('added sink to nodelist', sink, node_list)
-        assert(len(node_list) == len(tgraph.nodes()))
-        print('len(node_list) == len(tgraph.nodes())' ,len(node_list),' == ',  len(tgraph.nodes()))
+        # node_list.append(sink)
+        print('added sink to nodelist', sink, self.node_list)
+        assert(len(self.node_list) == len(tgraph.nodes()))
+        print('len(node_list) == len(tgraph.nodes())', len(self.node_list), ' == ',  len(tgraph.nodes()))
 
 
-        tmatrix = nx.adjacency_matrix(tgraph, node_list)
-        tmatrix.setdiag(tmatrix.diagonal(1))
-        tmatrix
+
+
+        tmatrix = nx.adjacency_matrix(tgraph, self.node_list)
+
+
+
 
 
 
         # print(tmatrix)
         print(tmatrix.todense())
+
+
 
         return tmatrix
 
@@ -557,31 +688,44 @@ class AttackGraph(nx.MultiDiGraph):
             # print('node | in_degree | out_degree: ', n, ' | ', tgraph.in_degree(n), ' | ', tgraph.out_degree(n))
             # print('tgraph', n, v)
 
-    def writeTmatrix(filename, header=None, tmatrix=None):
-        with open(filename, "wb") as f:
-            writer = csv.writer(f)
-            writer.writerow(header)
-            writer.writerows(tmatrix)
+    def writeTmatrix(self, header=None, tmatrix=None):
+        # print('header: ', filename, header, tmatrix.todense())
+        # print('Types tmatrix, dense: ', type(tmatrix), type(tmatrix.todense()))
+
+        #filename = self.inputDir + '/' + self.outfileName + '.csv'
+        filename =  self.inputDir + '/' + self.name + '.csv'
+        print('Writing transition matrix to: ', filename)
+        pandas.DataFrame(tmatrix.todense()).round(decimals=2).to_csv(filename, header=header, index=False )
+        # with open(filename, "w") as f:
+        #     writer = csv.writer(f)
+        #     writer.writerow(header)
+        #     writer.writerows(tmatrix.todense())
 
 
 if __name__ == '__main__':
-
     if len(sys.argv) != 4:
-        print('<usage> genTransMatrix.py inputdir run_name')
-        inputDir = os.getcwd()
-        matrixFileName = 'a.csv'
-        name = 'nameMe'
-    else:
-        # read inputDir/AttackGraph.dot
-        inputDir = sys.argv[1]
-        # write transMatrix.csv
-        matrixFileName = sys.argv[2] + '.csv'
-        name = sys.argv[2]
+        print('<usage> genTransMatrix.py inputdir outputfile customScoresDir')
+        sys.exit()
 
-    A = AttackGraph(inputDir=inputDir)
+    # if len(sys.argv) != 4:
+    #     print('<usage> genTransMatrix.py inputdir run_name')
+    #     inputDir = os.getcwd()
+    #     matrixFileName = 'a.csv'
+    #     name = 'nameMe'
+    # else:
+        # read inputDir/AttackGraph.dot
+    inputDir = sys.argv[1]
+    outfileName = sys.argv[2]
+    scriptsDir = sys.argv[3]
+        # write transMatrix.csv
+        # matrixFileName = sys.argv[2] + '.csv'
+    matrixFileName = inputDir + '/' + sys.argv[2] + '.csv'
+    name =  sys.argv[2]
+
+    A = AttackGraph(inputDir=inputDir, scriptsDir=scriptsDir)
     A.name = name
 
-    A.plot2(outfilename=name + '_001_orig.png')
+    A.plot2(outfilename= name + '_001_orig.png')
     tgraph = deepcopy(A)
 
     # make transition matrix
@@ -589,6 +733,7 @@ if __name__ == '__main__':
     # A.getORnodes()
     # A.getLEAFnodes()
 
-    tmatrix = A.getTransMatrix(tgraph)
+    tmatrix = A.getTransMatrix(tgraph, inputDir=inputDir, outfileName=outfileName)
+    # tgraph.writeTmatrix(matrixFileName, header=A.node_list, tmatrix=tmatrix)
 
     # print(tmatrix)
