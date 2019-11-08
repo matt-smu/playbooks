@@ -167,8 +167,11 @@ class AttackGraph(nx.MultiDiGraph):
                     score = 1
             except MySQLdb.Error as e:
                 print("Error %d: %s" % (e.args[0], e.args[1]))
-                sys.exit(1)
 
+                # @TODO exit when not testing (uncomment)
+                # sys.exit(1)
+                print('bad cveid (result unknown): setting CVSS to 1!!!**** [' + cveid + ']')
+                score = 1
             finally:
                 if con:
                     con.close()
@@ -254,12 +257,19 @@ class AttackGraph(nx.MultiDiGraph):
                         score = self.getCVSSscore(mycveid)
                         # self.nodes[andNode]['scores'].append(self.nodes[p]['exploit_rule_score'])
 
+
                 if score:
                     print('score found, overwriting default for node: ', score,
                           self.nodes[andNode]['exploit_rule_score'], andNode)
                     self.nodes[andNode]['exploit_rule_score'] = score
                 else:
                     print('no score found, preserving default', self.nodes[andNode])
+
+                #  set outbound edge scores here
+                o_edges = [((u, v, k), e) for u, v, k, e in self.out_edges(andNode, keys=True, data=True)]
+                for ((u2, v2, k2), e2) in o_edges:
+                    self.setEdgeScore(u2, v2, k2, self.nodes[andNode]['exploit_rule_score'])
+
 
     def scoreANDs(self):
         andNodes = self.getANDnodes()
@@ -279,12 +289,12 @@ class AttackGraph(nx.MultiDiGraph):
                         self.nodes[v2]['scores'].append(self.nodes[a]['exploit_rule_score'])
                         print('added score to child OR node: ', self.nodes[v2])
                         # print('making new edge: ', (u1, v2))
-                        self.remove_edge(u2, v2, k2, *e2)
+                        self.remove_edge(u2, v2, k2)
                         o_edges.remove(((u2, v2, k2), e2))
                 if not o_edges:
                     for ((u1, v1, k1), e1) in i_edges:
                         print('u1, v1, k1, e1: ', u1, v1, k1, e1)
-                        self.remove_edge(u1, v1, k1, *e1)
+                        self.remove_edge(u1, v1, k1)
                         i_edges.remove(((u1, v1, k1), e1))
 
             else:
@@ -298,31 +308,44 @@ class AttackGraph(nx.MultiDiGraph):
 
                         self.nodes[v2]['scores'].append(self.nodes[a]['exploit_rule_score'])
                         print('added score to child OR node: ', self.nodes[v2])
-                        print('making new edge: ', (u1, v2))
+                        # print('making new edge: ', (u1, v2))
                         if not v1:  # we're a root
                             # print('Were at root, no u1 v2 edge: ', (u1, v2))
                             # self.add_edge(u1, v2)
                             # self.remove_edge(u1, v1)
                             # i_edges.remove((u1, v1))
-                            self.remove_edge(u2, v2, k2, *e2)
+                            self.remove_edge(u2, v2, k2)
                             o_edges.remove(((u2, v2, k2), e2))
                         elif not u2:  # we're a sink
                             # print('Were at root, no u1 v2 edge: ', (u1, v2))
                             # self.add_edge(u1, v2)
                             # self.remove_edge(u1, v1)
                             # i_edges.remove((u1, v1))
-                            self.remove_edge(u1, v1, k1, *e1)
+                            self.remove_edge(u1, v1, k1)
                             o_edges.remove(((u1, v1), e1))
                         elif v1 == u2:
-                            print('making new edge: ', (u1, v2))
-                            self.add_edge(u1, v2)
-                            self.remove_edge(u1, v1, k1, *e1)
+                            # k = self.add_edge(u1, v2)
+                            # print('making new edge: ', (u1, v2, k))
+                            #
+                            k = self.add_edge(u1, v2)
+                            if e1: self[u1][v2][k].update(e1)
+                            if e2: self[u1][v2][k].update(e2)
+                            print('making new edge: ', (u1, v2, k, self[u1][v2][k]))
+
+                            self.remove_edge(u1, v1, k1)
                             i_edges.remove(((u1, v1, k1), e1))
-                            self.remove_edge(u2, v2, k2, *e2)
+                            self.remove_edge(u2, v2, k2)
                             o_edges.remove(((u2, v2, k2), e2))
                         else:
                             print('ScoreANDs***** I Shouldnt be here *********')
                         # self.remove_node(a)
+
+    def merge_two_dicts(x, y):
+        #  https://stackoverflow.com/questions/38987/how-do-i-merge-two-dictionaries-in-a-single-expression
+        #
+        z = x.copy()  # start with x's keys and values
+        z.update(y)  # modifies z with y's keys and values & returns None
+        return z
 
     def coalesceANDnodes(self):
         andNodes = [n for n in self.nodes() if self.nodes[n]['type'] == 'AND' and self.nodes[n]['toCoalesce']]
@@ -339,12 +362,12 @@ class AttackGraph(nx.MultiDiGraph):
                 if not i_edges:
                     for ((u2, v2, k2), e2) in o_edges:
                         print('u2, v2, k2, e2: ', u2, v2, k2, e2)
-                        self.remove_edge(u2, v2, k2, *e2)
+                        self.remove_edge(u2, v2, k2)
                         o_edges.remove(((u2, v2, k2), e2))
                 if not o_edges:
                     for ((u1, v1, k1), e1) in i_edges:
                         print('u1, v1, k1, e1: ', u1, v1, k1, e1)
-                        self.remove_edge(u1, v1, k1, *e1)
+                        self.remove_edge(u1, v1, k1)
                         i_edges.remove(((u1, v1, k1), e1))
 
             else:
@@ -353,26 +376,30 @@ class AttackGraph(nx.MultiDiGraph):
                     for ((u2, v2, k2), e2) in o_edges:
                         print('u2, v2, k2, e2: ', u2, v2, k2, e2)
                         if not u1:  # we're a root
-                            print('making new edge: ', (u1, v2))
+                            # print('making new edge: ', (u1, v2))
                             print('coalesceAND - couldnt find v1 - are we a root?', v1)
                             # self.add_edge(u1, v2)
                             # self.remove_edge(u1, v1, k1, *e1)
                             # i_edges.remove(((u1, v1, k1), e1))
-                            self.remove_edge(u2, v2, k2, *e2)
+                            self.remove_edge(u2, v2, k2)
                             o_edges.remove(((u2, v2, k2), e2))
 
                         elif not v2:  # we're a sink
                             # self.add_edge(u1, v2)
                             print('coalesceAND - couldnt find u1 - are we a sink?', u2, v2)
-                            self.remove_edge(u1, v1, k1, *e1)
+                            self.remove_edge(u1, v1, k1)
                             i_edges.remove(((u1, v1, k1), e1))
 
                         elif v1 == u2:
-                            print('making new edge: ', (u1, v2))
-                            self.add_edge(u1, v2)
-                            self.remove_edge(u1, v1, k1, *e1)
+
+                            k = self.add_edge(u1, v2)
+                            if e1: self[u1][v2][k].update(e1)
+                            if e2: self[u1][v2][k].update(e2)
+                            print('making new edge: ', (u1, v2, k, self[u1][v2][k]))
+
+                            self.remove_edge(u1, v1, k1)
                             i_edges.remove(((u1, v1, k1), e1))
-                            self.remove_edge(u2, v2, k2, *e2)
+                            self.remove_edge(u2, v2, k2)
                             o_edges.remove(((u2, v2, k2), e2))
                 print('i+o edges: ', i_edges, o_edges, i_edges + o_edges)
 
@@ -402,7 +429,7 @@ class AttackGraph(nx.MultiDiGraph):
                     for ((u2, v2, k2), e2) in o_edges:
                         print('iedges: ', i_edges)
                         print('o, u2, v2, k2, e2: ', o, u2, v2, k2, e2)
-                        self.remove_edge(u2, v2, k2, *e2)
+                        self.remove_edge(u2, v2, k2)
                         o_edges.remove(((u2, v2, k2), e2))
                         edgeTrash.add((u2, v2, k2))
                         print('edgeTrash: ', edgeTrash)
@@ -413,7 +440,7 @@ class AttackGraph(nx.MultiDiGraph):
                     for ((u1, v1, k1), e1) in i_edges:
                         print('oedges: ', o_edges)
                         print('u1, v1 , k, e1: ', u1, v1, k1, e1)
-                        self.remove_edge(u1, v1, k1, *e1)
+                        self.remove_edge(u1, v1, k1)
                         i_edges.remove(((u1, v1, k1), e1))
                         # self.remove_nodes_from(list(nx.isolates(self)))
                         # i_edges = [(u, v) for u, v, e in self.in_edges(o, keys=True, data=True)]
@@ -423,8 +450,14 @@ class AttackGraph(nx.MultiDiGraph):
                     for ((u2, v2, k2), e2) in o_edges:
                         print('u2, v2, k2, e2: ', u2, v2, k2, e2)
                         if u1 and v2:  # all good
+                            # k = self.add_edge(u1, v2)
+                            # print('coalesceORnodes making new edge: ', (u1, v2, k), e1)
+                            #
                             k = self.add_edge(u1, v2)
-                            print('coalesceORnodes making new edge: ', (u1, v2, k), e1)
+                            if e1: self[u1][v2][k].update(e1)
+                            if e2: self[u1][v2][k].update(e2)
+                            print('making new edge: ', (u1, v2, k, self[u1][v2][k]))
+
                             edgeTrash.add((u1, v1, k1))
                             print('edgeTrash: ', edgeTrash)
                             # self.remove_edge(u1, v1, k1, *e1)
@@ -506,35 +539,102 @@ class AttackGraph(nx.MultiDiGraph):
 
             print('tgraph root node: ', tgraph.origin)
 
-    def setEdgeWeights(self):
+    def setEdgeScore(self, u, v, k, score):
 
-        # sums scores for all child nodes in self.nodes[n]['succs_sum']
-        for n in self.nodes().keys():
+        self[u][v][k]['score']=score
+        self[u][v][k]['label'] = round(score, 2)
+
+    def setEdgeScores(self, **kwargs):
+        for n in self.nodes():
             self.nodes[n]['succs_sum'] = 0
             self.nodes[n]['succs_count'] = 0
-            print('n successors: ', n, list(self.successors(n)))
-            if not n in self.successors(n): # add self ref in not exists
-                self.add_edge(n, n)
-                print('adding n successors: ', n, list(self.successors(n)))
-            for s in list(self.successors(n)): # add up successor scores for edge weighting
-                if 'scores' in self.nodes[s].keys():
-                    self.nodes[n]['succs_sum'] += sum(self.nodes[s]['scores'])
-                    self.nodes[n]['succs_count'] +=1
-                    print('scores for node, succs_count, succs_sum: ', n,  self.nodes[s]['scores'],
-                          self.nodes[n]['succs_count'], self.nodes[n]['succs_sum'])
-                else:
-                    self.nodes[s]['scores'] = [(0)]
-                    self.nodes[n]['succs_count'] += 1
+            self.nodes[n]['preds_sum'] = 0
+            self.nodes[n]['preds_count'] = 0
+            i_edges = [((u, v, k), e) for u, v, k, e in self.in_edges(n, keys=True, data=True)]
+            o_edges = [((u, v, k), e) for u, v, k, e in self.out_edges(n, keys=True, data=True)]
+
+            for (u, v, k), e in i_edges:
+                if self[u][v][k]['score']:
+                    self.nodes[n]['preds_sum'] += self[u][v][k]['score']
+                self.nodes[n]['preds_count'] += 1
+
+            for (u, v, k), e in o_edges:
+                if self[u][v][k]['score']:
+                    self.nodes[n]['succs_sum'] += self[u][v][k]['score']
+                self.nodes[n]['succs_count'] += 1
+
+            denom = self.nodes[n]['succs_sum'] + self.nodes[n]['preds_sum']
+            self.setEdgeScore(n, n, self.getSelfEdge(n), self.nodes[n]['preds_sum'])
+            print("sums: node[{}] outsum[{}] insum[{}] denom[{}] selfedge[{}]".format(
+                n, self.nodes[n]['succs_sum'], self.nodes[n]['preds_sum'], denom, self[n][n][self.getSelfEdge(n)]['score']))
+
+
+
+
+    def setEdgeWeights(self, **kwargs):
+
+        # for n in self.nodes():
+        #     self.nodes[n]['succs_sum'] = 0
+        #     self.nodes[n]['succs_count'] = 0
+        #     self.nodes[n]['preds_sum'] = 0
+        #     self.nodes[n]['preds_count'] = 0
+        #     i_edges = [((u, v, k), e) for u, v, k, e in self.in_edges(n, keys=True, data=True)]
+        #     o_edges = [((u, v, k), e) for u, v, k, e in self.out_edges(n, keys=True, data=True)]
+        #
+        #     for (u, v, k), e in i_edges:
+        #         if self[u][v][k]['score']:
+        #             self.nodes[n]['preds_sum'] += self[u][v][k]['score']
+        #         self.nodes[n]['preds_count'] += 1
+        #
+        #     for (u, v, k), e in o_edges:
+        #         if self[u][v][k]['score']:
+        #             self.nodes[n]['succs_sum'] += self[u][v][k]['score']
+        #         self.nodes[n]['succs_count'] += 1
+
+
 
         # set edge weights as fraction of sum_succs
-        # for n in self.nodes():
-        #     print(self.edges.data(keys=True, data=True))
-        for u, v, k, d in self.edges.data(keys=True, data=True):
-            print('(u, v) u[succs_sum], v[scores]: ', '(', u, ',', v, ')  [',  sum(self.nodes[v]['scores']), '/',
-                  self.nodes[u]['succs_sum'], ']')
-            d['weight'] = sum(self.nodes[v]['scores']) / self.nodes[u]['succs_sum']
-            d['label'] = round(d['weight'], 2) # only for labelling edges in img
-        print(self.edges.data(keys=True, data=True))
+        for n in self.nodes():
+            denom = self.nodes[n]['succs_sum'] + self.nodes[n]['preds_sum']
+            print('sums: ', n, self.nodes[n]['succs_sum'], self.nodes[n]['preds_sum'], denom, self.getSelfEdge(n))
+
+
+            # i_edges = [((u, v, k), e) for u, v, k, e in self.in_edges(n, keys=True, data=True)]
+            o_edges = [((u, v, k), e) for u, v, k, e in self.out_edges(n, keys=True, data=True)]
+
+            for (u, v, k), e in o_edges:
+                if self[u][v][k]['score']:
+                    self[u][v][k]['weight'] = self[u][v][k]['score'] / denom
+                    self[u][v][k]['label'] = round(self[u][v][k]['score'] / denom, 2)
+            # set self edge weight
+            self.setEdgeScore(n, n, self.getSelfEdge(n), self.nodes[n]['preds_sum'] / denom)
+
+
+
+
+            # print(self.edges.data(keys=True, data=True))
+            # if not (n in self.successors(n) or n in self.predecessors(n)):  # add self ref in not exists
+            #     k = self.add_edge(n, n)
+            #     print('adding n successors: ', n, list(self.successors(n)))
+        # for u, v, k, d in self.edges.data(keys=True, data=True):
+        #     print('(u, v) u[succs_sum], v[scores]: ', '(', u, ',', v, ')  [',  sum(self.nodes[v]['scores']), '/',
+        #           self.nodes[u]['succs_sum'], ']')
+        #     if self.nodes[n]['succs_sum'] and self.nodes[n]['succs_sum'] > 0:
+        #         d['weight'] = sum(self.nodes[v]['scores']) / self.nodes[u]['succs_sum']
+        #         d['label'] = round(d['weight'], 2) # only for labelling edges in img
+        # print(self.edges.data(keys=True, data=True))
+
+
+    def getSelfEdge(self, n):
+        # assuming each node only has one selfloop
+        # so making this singleton
+        if not self.has_edge(n,n):
+            k = self.add_edge(n, n)
+            return k
+        elif self.number_of_edges(n,n) != 1:
+            print('too many selfloop edges!')
+        else: return 0 # default key
+
 
 
     def getTransMatrix(self, tgraph,  **kwargs):
@@ -588,6 +688,11 @@ class AttackGraph(nx.MultiDiGraph):
         # # print('tgraph root node: ', tgraph.has_node('0'))
         # tgraph.plot2(outfilename=self.name + '_006_addOrigin.png')
 
+        # 6.5 add edge scores
+        # breaking off to support different weighting strategies
+        tgraph.setEdgeScores()
+        tgraph.plot2(outfilename=self.name + '_006_scoreEdges.png')
+
         # 7. add edge weights
         tgraph.setEdgeWeights()
         tgraph.plot2(outfilename=self.name + '_007_weighEdges.png')
@@ -628,6 +733,12 @@ class AttackGraph(nx.MultiDiGraph):
 
         return tmatrix
 
+    def getNodeList(self):
+        """
+        Orders current nodes for writing tmatrix
+        Currently just getting sources in the front and sinks at the end... may need to be smarter about this
+        :return: ordered nodelist
+        """
 
 
     def convertTMatrix(self):
@@ -639,6 +750,7 @@ class AttackGraph(nx.MultiDiGraph):
         sink = None
         transit = {}
 
+            self.nodes[n]['preds_sum'] = 0
 
 
         tvs_ = [(n, v) for n, v in tgraph.nodes(data=True)]
