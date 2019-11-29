@@ -10,3 +10,5 @@
 *.log
 **dotfiles
 **.idea
+*.gen
+*.xwam
