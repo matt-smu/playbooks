@@ -341,8 +341,9 @@ class AttackGraph(nx.MultiDiGraph):
                         # self.remove_node(a)
 
     def merge_two_dicts(x, y):
+        # used when coalescing edge data
         #  https://stackoverflow.com/questions/38987/how-do-i-merge-two-dictionaries-in-a-single-expression
-        #
+        # might need something smarter if 2+ edges are scored
         z = x.copy()  # start with x's keys and values
         z.update(y)  # modifies z with y's keys and values & returns None
         return z
@@ -514,8 +515,8 @@ class AttackGraph(nx.MultiDiGraph):
     #         print('tgraph root node: ', tgraph.origin)
 
     def setOrigin(self):
-        print('tgraph root node: ', tgraph.origin)
-        if not tgraph.origin:
+        print('tgraph root node: ', self.origin)
+        if not self.origin:
             roots = set()
             self.origin = '0'
             for n in self.getLEAFnodes():
@@ -554,11 +555,15 @@ class AttackGraph(nx.MultiDiGraph):
             o_edges = [((u, v, k), e) for u, v, k, e in self.out_edges(n, keys=True, data=True)]
 
             for (u, v, k), e in i_edges:
+                if 'score' not in self[u][v][k].keys():
+                    self[u][v][k]['score'] = None
                 if self[u][v][k]['score']:
                     self.nodes[n]['preds_sum'] += self[u][v][k]['score']
                 self.nodes[n]['preds_count'] += 1
 
             for (u, v, k), e in o_edges:
+                if 'score' not in self[u][v][k].keys():
+                    self[u][v][k]['score'] = None
                 if self[u][v][k]['score']:
                     self.nodes[n]['succs_sum'] += self[u][v][k]['score']
                 self.nodes[n]['succs_count'] += 1
@@ -597,17 +602,16 @@ class AttackGraph(nx.MultiDiGraph):
         for n in self.nodes():
             denom = self.nodes[n]['succs_sum'] + self.nodes[n]['preds_sum']
             print('sums: ', n, self.nodes[n]['succs_sum'], self.nodes[n]['preds_sum'], denom, self.getSelfEdge(n))
+            if denom != 0:
+                # i_edges = [((u, v, k), e) for u, v, k, e in self.in_edges(n, keys=True, data=True)]
+                o_edges = [((u, v, k), e) for u, v, k, e in self.out_edges(n, keys=True, data=True)]
 
-
-            # i_edges = [((u, v, k), e) for u, v, k, e in self.in_edges(n, keys=True, data=True)]
-            o_edges = [((u, v, k), e) for u, v, k, e in self.out_edges(n, keys=True, data=True)]
-
-            for (u, v, k), e in o_edges:
-                if self[u][v][k]['score']:
-                    self[u][v][k]['weight'] = self[u][v][k]['score'] / denom
-                    self[u][v][k]['label'] = round(self[u][v][k]['score'] / denom, 2)
-            # set self edge weight
-            self.setEdgeScore(n, n, self.getSelfEdge(n), self.nodes[n]['preds_sum'] / denom)
+                for (u, v, k), e in o_edges:
+                    if self[u][v][k]['score']:
+                        self[u][v][k]['weight'] = self[u][v][k]['score'] / denom
+                        self[u][v][k]['label'] = round(self[u][v][k]['score'] / denom, 2)
+                # set self edge weight
+                self.setEdgeScore(n, n, self.getSelfEdge(n), self.nodes[n]['preds_sum'] / denom)
 
 
 
@@ -693,6 +697,8 @@ class AttackGraph(nx.MultiDiGraph):
         tgraph.setEdgeScores()
         tgraph.plot2(outfilename=self.name + '_006_scoreEdges.png')
 
+
+
         # 7. add edge weights
         tgraph.setEdgeWeights()
         tgraph.plot2(outfilename=self.name + '_007_weighEdges.png')
@@ -708,6 +714,8 @@ class AttackGraph(nx.MultiDiGraph):
         #     tgraph.setORscore(n)
         #     print(tgraph.nodes[n])
         # print('or nodes after: ', orNodes)
+
+        tgraph.remove_node(tgraph.origin)
 
         tmatrix = tgraph.convertTMatrix()
 
@@ -727,8 +735,10 @@ class AttackGraph(nx.MultiDiGraph):
         if 'matrixFileName' in kwargs.keys():
             outfile = kwargs['matrixFileName']
 
-        print('header type: ', type(tgraph.node_list), tgraph.node_list)
-        self.writeTmatrix(header=tgraph.node_list, tmatrix=tmatrix)
+        # print('header type: ', type(tgraph.node_list), tgraph.node_list)
+        print('header type: ', type(tgraph.getNodeList()), tgraph.getNodeList())
+        self.writeTmatrix(header=tgraph.getNodeList(), tmatrix=tmatrix)
+
 
 
         return tmatrix
@@ -739,48 +749,56 @@ class AttackGraph(nx.MultiDiGraph):
         Currently just getting sources in the front and sinks at the end... may need to be smarter about this
         :return: ordered nodelist
         """
-
-
-    def convertTMatrix(self):
-        """
-        transforms for writing to disk, adding nodes header, setting weights, etc
-        :return:
-        """
+        node_list = []
         source = None
         sink = None
         transit = {}
 
-            self.nodes[n]['preds_sum'] = 0
+        # self.nodes[n]['preds_sum'] = 0
 
-
-        tvs_ = [(n, v) for n, v in tgraph.nodes(data=True)]
+        # tvs_ = [(n, v) for n, v in tgraph.nodes(data=True)]
+        tvs_ = [(n, v) for n, v in self.nodes(data=True)]
         for (n, v) in tvs_:
 
             # set sinks sources
-            if tgraph.in_degree(n) == 1: source = n
-            if tgraph.out_degree(n) == 0: sink = n
-            if tgraph.in_degree(n) != 1 and tgraph.out_degree(n) != 0: transit[n]=v
+            if self.origin: source = self.origin
+            elif self.in_degree(n) == 1: source = n
+            if self.target: sink = self.target
+            elif self.out_degree(n) == 0: sink = n
 
+            # if self.in_degree(n) != 1 and self.out_degree(n) != 0: transit[n] = v
+            if n not in (sink, source): transit[n] = v
 
         # build node list for tmatrix header
-        self.node_list.append(source)
+
+        # node_list.append(source) # origin makes tmatrix non-invertible
         tmp = list(transit.keys())
         for n in range(len(tmp)):
             a = max([int(i) for i in tmp])
             # print('added a to nodelist', a, type(str(a)), node_list)
-            self.node_list.append(str(a))
+            node_list.append(str(a))
             tmp.remove(str(a))
 
-
         # node_list.append(sink)
-        print('added sink to nodelist', sink, self.node_list)
-        assert(len(self.node_list) == len(tgraph.nodes()))
-        print('len(node_list) == len(tgraph.nodes())', len(self.node_list), ' == ',  len(tgraph.nodes()))
+        print('added sink to nodelist', sink, node_list, self.nodes(), len(node_list), len(self.nodes()))
+        assert(len(node_list) == len(self.nodes()))
+
+        return node_list
+
+    def convertTMatrix(self):
+        """
+        transforms graph for writing to disk, adding nodes header, setting weights, etc
+        :return:
+        """
+
+        nodelist = self.getNodeList()
+
+        print('len(node_list) == len(tgraph.nodes())', len(self.getNodeList()), ' == ',  len(self.nodes()))
 
 
 
 
-        tmatrix = nx.adjacency_matrix(tgraph, self.node_list)
+        tmatrix = nx.adjacency_matrix(self, nodelist)
 
 
 

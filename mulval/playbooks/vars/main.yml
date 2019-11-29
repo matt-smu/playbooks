@@ -20,12 +20,13 @@ mulval_install_dir: /opt
 mulval_home: "{{ mulval_install_dir }}/mulval"
 mulval_results_dir: "/tmp/mulval_results"
 
-mulval_models_src_dir: models
+mulval_models_src_dir: models_008
 #mulval_models_src_dir: sedap
 mulval_models_dir: "{{mulval_results_dir}}/{{mulval_models_src_dir}}"
 
 mulval_custom_rules_strategy: all # each expects {model_name.P.rules}, all expects custom_rules/*.P, none doesn't look
-mulval_custom_rules_src: custom_rules/custom_001
+#mulval_custom_rules_src: custom_rules/custom_001
+mulval_custom_rules_src: custom_rules/all
 #mulval_custom_rules_src: custom_rules 
 mulval_custom_rules_dir: "{{mulval_results_dir}}/{{mulval_custom_rules_src}}" 
 #mulval_custum_rules:

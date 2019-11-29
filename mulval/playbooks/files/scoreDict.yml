@@ -29,7 +29,7 @@ coalesce_rules: # list of AND rules to coalesce
 # @TODO assign rule id
 exploit_rules: # dict of AND rules to add to tmatrix
 #  'arpSpoofVuln': 1
-  'password sniffing through spoof': 2
+#  'password sniffing through spoof': 2
   'remote exploit of a server program': 3
   'Trojan horse installation': 4
   'local exploit': 5
@@ -37,15 +37,19 @@ exploit_rules: # dict of AND rules to add to tmatrix
   'NFS shell': 7
   'execCode implies file access': 8
   'NFS semantics': 9
-  'Trojan horse installation': 9.1
+#  'Trojan horse installation': 9.1
   'any machine he has an account on will also be compromised': 9.2
   'through a log-in service': 9.3
+  'password sniffing through spoof': 4
+  'password sniffing through route hijack': 5.6
+
+
 
 exploitDict: # dict of LEAF CVSS overrides
   'CVE-2014-9796': 6.1
   'CVE-2009-2048': 6.2
   'CVE-2015-7501': 6.3
-  'CVE-2016-xxxx': 6.4
+  'CVE-2016-xxxx': 1.4
   'CAN-2002-0392': 6.5
   'CVE-2010-2784': 6.6 # no sql cnxn
   'CVE-2014-6271': 6.7
