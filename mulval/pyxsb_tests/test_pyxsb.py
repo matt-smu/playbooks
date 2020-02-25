@@ -45,7 +45,7 @@ pyxsb_start_session(XSB_ARCH_DIR)
 
 # pyxsb_command('[curl].')
 # pyxsb_command("load_page(url('http://www.google.com'),[],_Prop,R,W).")
-# pyxsb_command('fail.')
+# pyxsb_command('fail.')`
 pyxsb_query('catch(abort,Exception,true).')
 
 pyxsb_command('consult(run).')
