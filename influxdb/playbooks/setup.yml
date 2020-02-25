@@ -1,0 +1,20 @@
+- name: prerequisite pips
+  pip:
+    name: 
+    - requests
+    - influxdb
+
+      #- name: Create database
+      #influxdb_database:
+      #hostname: "influx1"
+      #database_name: "perfkit"
+
+
+- name: Create an admin user on a remote host using custom login credentials
+  influxdb_user:
+    user_name: perfkit
+    user_password: perfkit
+    admin: yes
+    #login_username: "{{ influxdb_username }}"
+    #login_password: "{{ influxdb_password }}"
+
